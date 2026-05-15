@@ -134,6 +134,94 @@ VARIANTS: Dict[str, VariantSpec] = {
         "softmax", "transformer",
     ),
 
+    # ---- Phase 9: leave-one-out TRUE ablation from `full` --------------------
+    # Each variant removes EXACTLY ONE component from `full`. They are trained
+    # with a `full_preset`-derived recipe (see TRAINING_PRESETS) so the ONLY
+    # difference vs `full` is the removed component — not the training schedule.
+    # `spectral_swin` and `modality_stems` are intentionally absent: the
+    # monotonic guards in trans_resunet.py couple them to dependent heads, so
+    # they cannot be cleanly leave-one-out ablated (report via chain delta).
+    "full_no_cross_modal": (
+        TransResUNet3D,
+        dict(in_channels=5, num_classes=4, base_filters=32,
+             use_modality_stems=True, use_cross_modal=False,   # <-- removed
+             use_freq=True,
+             use_spectral_swin=True,
+             use_uncertainty=True,
+             use_boundary=True,
+             spectral_blocks_per_stage=4,
+             encoder_extra_depth=True,
+             use_multiscale_fusion_head=True,
+             decoder_dropout_final=0.05,
+             output_mode="softmax"),
+        "softmax", "transformer",
+    ),
+    "full_no_freq": (
+        TransResUNet3D,
+        dict(in_channels=5, num_classes=4, base_filters=32,
+             use_modality_stems=True, use_cross_modal=True,
+             use_freq=False,                                    # <-- removed
+             use_spectral_swin=True,
+             use_uncertainty=True,
+             use_boundary=True,
+             spectral_blocks_per_stage=4,
+             encoder_extra_depth=True,
+             use_multiscale_fusion_head=True,
+             decoder_dropout_final=0.05,
+             output_mode="softmax"),
+        "softmax", "transformer",
+    ),
+    "full_no_uncertainty": (
+        TransResUNet3D,
+        dict(in_channels=5, num_classes=4, base_filters=32,
+             use_modality_stems=True, use_cross_modal=True,
+             use_freq=True,
+             use_spectral_swin=True,
+             use_uncertainty=False,                             # <-- removed
+             use_boundary=True,
+             spectral_blocks_per_stage=4,
+             encoder_extra_depth=True,
+             use_multiscale_fusion_head=True,
+             decoder_dropout_final=0.05,
+             output_mode="softmax"),
+        "softmax", "transformer",
+    ),
+    "full_no_boundary": (
+        TransResUNet3D,
+        dict(in_channels=5, num_classes=4, base_filters=32,
+             use_modality_stems=True, use_cross_modal=True,
+             use_freq=True,
+             use_spectral_swin=True,
+             use_uncertainty=True,
+             use_boundary=False,                                # <-- removed
+             spectral_blocks_per_stage=4,
+             encoder_extra_depth=True,
+             use_multiscale_fusion_head=True,
+             decoder_dropout_final=0.05,
+             output_mode="softmax"),
+        "softmax", "transformer",
+    ),
+    # `full` minus the three Phase-6 architectural upgrades only. Matches the
+    # `boundary` architecture EXCEPT decoder_dropout_final stays at 0.05 (vs
+    # boundary's 0.0) so the sole delta vs `full` is the arch trio, not also
+    # the dropout. spectral_blocks_per_stage=2 / extra_depth off / fusion off
+    # reproduce the TransResUNet3D defaults `boundary` uses.
+    "full_no_arch": (
+        TransResUNet3D,
+        dict(in_channels=5, num_classes=4, base_filters=32,
+             use_modality_stems=True, use_cross_modal=True,
+             use_freq=True,
+             use_spectral_swin=True,
+             use_uncertainty=True,
+             use_boundary=True,
+             spectral_blocks_per_stage=2,                       # <-- removed (4->2 default)
+             encoder_extra_depth=False,                         # <-- removed
+             use_multiscale_fusion_head=False,                  # <-- removed
+             decoder_dropout_final=0.05,
+             output_mode="softmax"),
+        "softmax", "transformer",
+    ),
+
     # ---- Efficient variant (Phase 6b — pruned/distilled from `full`) ---------
     "full_efficient":   (_not_implemented("full_efficient"),   {}, "softmax", "transformer"),
 
