@@ -1,0 +1,26 @@
+# --- 資料與模型 ---
+data/
+archive/
+results/
+*.pt
+*.pth
+*.h5
+*.safetensors
+*.onnx
+
+# --- 日誌與暫存 ---
+logs/
+__pycache__/
+*.log
+
+# --- 編輯器與環境設定 ---
+.vscode/
+.claude/
+CLAUDE.md
+.env
+.DS_Store
+
+# --- Python 虛擬環境 ---
+venv/
+env/
+.venv/

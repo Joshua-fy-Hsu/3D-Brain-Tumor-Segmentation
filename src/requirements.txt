@@ -1,0 +1,27 @@
+# Core deep-learning stack.
+# For GPU builds, install torch separately first from the official index, e.g.:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+# Then: pip install -r requirements.txt
+torch>=2.1
+monai>=1.3
+
+# Medical-imaging IO and numerics.
+nibabel>=5.0
+numpy>=1.24
+scipy>=1.10
+
+# Tabular results, plots, progress, logging.
+pandas>=2.0
+matplotlib>=3.7
+tqdm>=4.65
+tensorboard>=2.14
+scikit-learn>=1.3
+
+# Optional — bias-field perturbation in evaluation/robustness.py.
+# Comment out if you don't run --with-robustness.
+torchio>=0.19
+
+# Web GUI (web/). Comment out if you don't run the FastAPI workstation.
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9

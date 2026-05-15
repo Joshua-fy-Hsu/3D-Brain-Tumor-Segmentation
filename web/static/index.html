@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Brain Tumor Segmentation Workstation</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles.css" />
+<script type="module" src="/static/app.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3a4 4 0 0 0-4 4v1a3 3 0 0 0-3 3v2a3 3 0 0 0 1.5 2.6A3 3 0 0 0 9 19h6a3 3 0 0 0 2.5-3.4A3 3 0 0 0 19 13v-2a3 3 0 0 0-3-3V7a4 4 0 0 0-4-4z"/>
+        <path d="M12 7v12"/>
+      </svg>
+    </div>
+    <div class="brand-text">
+      <h1>Brain Tumor Segmentation</h1>
+      <p>Clinical-style MRI workstation · All-modality Uncertainty-aware Residual Architecture with Spectral-processing</p>
+    </div>
+  </div>
+  <div class="model-badge" id="model-badge">Model: loading…</div>
+</header>
+
+<main class="layout">
+  <aside class="sidebar">
+    <section class="panel">
+      <div class="panel-header">
+        <span class="panel-num">1</span>
+        <h2>Upload MRI</h2>
+      </div>
+      <p class="panel-hint">Four NIfTI modalities (.nii / .nii.gz)</p>
+      <form id="upload-form">
+        <label class="file-row">
+          <span class="file-label">T1</span>
+          <input type="file" name="t1" accept=".nii,.nii.gz" required />
+          <span class="file-name">Choose a .nii / .nii.gz file</span>
+          <span class="file-btn">Browse</span>
+        </label>
+        <label class="file-row">
+          <span class="file-label">T1CE</span>
+          <input type="file" name="t1ce" accept=".nii,.nii.gz" required />
+          <span class="file-name">Choose a .nii / .nii.gz file</span>
+          <span class="file-btn">Browse</span>
+        </label>
+        <label class="file-row">
+          <span class="file-label">T2</span>
+          <input type="file" name="t2" accept=".nii,.nii.gz" required />
+          <span class="file-name">Choose a .nii / .nii.gz file</span>
+          <span class="file-btn">Browse</span>
+        </label>
+        <label class="file-row">
+          <span class="file-label">FLAIR</span>
+          <input type="file" name="flair" accept=".nii,.nii.gz" required />
+          <span class="file-name">Choose a .nii / .nii.gz file</span>
+          <span class="file-btn">Browse</span>
+        </label>
+        <button type="submit" id="predict-btn" class="btn-primary">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Run Prediction
+        </button>
+      </form>
+      <div id="status" class="status"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <span class="panel-num">2</span>
+        <h2>View Controls</h2>
+      </div>
+      <label class="control">
+        <span class="control-label">Base modality</span>
+        <select id="modality-select" disabled>
+          <option value="t1ce">T1CE (contrast)</option>
+          <option value="t1">T1</option>
+          <option value="t2">T2</option>
+          <option value="flair">FLAIR</option>
+        </select>
+      </label>
+      <label class="control">
+        <span class="control-label">Overlay opacity</span>
+        <input type="range" id="opacity" min="0" max="100" value="60" disabled />
+      </label>
+      <div class="legend">
+        <div class="legend-item"><span class="sw ncr"></span><span>Necrotic Core (NCR) — red</span></div>
+        <div class="legend-item"><span class="sw ed"></span><span>Edema / swelling (ED) — yellow</span></div>
+        <div class="legend-item"><span class="sw et"></span><span>Enhancing Tumor (ET) — blue</span></div>
+      </div>
+      <p class="panel-hint" style="margin-top:10px">NCR is the inner dead-tissue core — it sits <em>inside</em> ET/ED, so it is mostly hidden in the 3D render but visible in the slice viewer.</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <span class="panel-num">3</span>
+        <h2>Export</h2>
+      </div>
+      <p class="panel-hint">Bundle the segmentation, metrics, summary and a 3D screenshot.</p>
+      <button id="download-btn" class="btn-secondary" disabled>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Report (.zip)
+      </button>
+    </section>
+  </aside>
+
+  <section class="content">
+    <div class="hero">
+      <h2>Prediction Report</h2>
+      <p>Automated brain tumor characterisation from multi-modal MRI. All values are model-generated and intended for research / educational demonstration only.</p>
+    </div>
+
+    <!-- Summary first — judge-facing copy -->
+    <div class="card card-summary">
+      <div class="card-head-row">
+        <div class="card-icon" style="--icon-bg:#eef6ff;--icon-fg:#2563eb">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        </div>
+        <div>
+          <h3>Clinical Summary</h3>
+          <p class="card-sub">One-paragraph readout — copy directly into a medical record.</p>
+        </div>
+      </div>
+      <p id="summary-text" class="summary-body muted">Upload a 4-modality MRI study to generate a report.</p>
+    </div>
+
+    <!-- Metrics grid -->
+    <div class="metrics-grid">
+
+      <!-- Volumes -->
+      <div class="card">
+        <div class="card-head-row">
+          <div class="card-icon" style="--icon-bg:#eef6ff;--icon-fg:#2563eb">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          </div>
+          <div>
+            <h3>Tumor Volumes</h3>
+            <p class="card-sub">Total tissue affected, in millilitres (mL)</p>
+          </div>
+        </div>
+        <ul class="metric-list">
+          <li>
+            <div class="metric-text">
+              <span class="metric-name">Whole Tumor</span>
+              <span class="metric-desc">All abnormal tissue (NCR + ED + ET)</span>
+            </div>
+            <span class="metric-value" id="vol-wt">—</span>
+          </li>
+          <li>
+            <div class="metric-text">
+              <span class="metric-name">Tumor Core</span>
+              <span class="metric-desc">Necrotic + enhancing tissue</span>
+            </div>
+            <span class="metric-value" id="vol-tc">—</span>
+          </li>
+          <li>
+            <div class="metric-text">
+              <span class="metric-name">Enhancing Tumor</span>
+              <span class="metric-desc">Active, contrast-enhancing region</span>
+            </div>
+            <span class="metric-value" id="vol-et">—</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Confidence -->
+      <div class="card">
+        <div class="card-head-row">
+          <div class="card-icon" style="--icon-bg:#eefcf3;--icon-fg:#16a34a">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          </div>
+          <div>
+            <h3>Model Confidence</h3>
+            <p class="card-sub">Mean predicted probability inside each region (0–100%)</p>
+          </div>
+        </div>
+        <ul class="metric-list">
+          <li>
+            <div class="metric-text">
+              <span class="metric-name">Whole Tumor</span>
+              <span class="metric-desc" id="conf-wt-desc">—</span>
+            </div>
+            <span class="metric-value" id="conf-wt">—</span>
+          </li>
+          <li>
+            <div class="metric-text">
+              <span class="metric-name">Tumor Core</span>
+              <span class="metric-desc" id="conf-tc-desc">—</span>
+            </div>
+            <span class="metric-value" id="conf-tc">—</span>
+          </li>
+          <li>
+            <div class="metric-text">
+              <span class="metric-name">Enhancing Tumor</span>
+              <span class="metric-desc" id="conf-et-desc">—</span>
+            </div>
+            <span class="metric-value" id="conf-et">—</span>
+          </li>
+        </ul>
+        <p id="conf-flag" class="flag"></p>
+      </div>
+
+      <!-- Risk vs population -->
+      <div class="card">
+        <div class="card-head-row">
+          <div class="card-icon" style="--icon-bg:#fef3ef;--icon-fg:#ea580c">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+          </div>
+          <div>
+            <h3>Size vs Population</h3>
+            <p class="card-sub">Whole-tumor volume compared with 1251 BraTS patients</p>
+          </div>
+        </div>
+        <div class="risk-area">
+          <span class="risk-badge" id="risk-badge">—</span>
+          <p class="risk-pct" id="risk-pct">Awaiting prediction</p>
+        </div>
+        <p class="card-explain">
+          Below the <strong>33rd</strong> percentile → Low · up to <strong>67th</strong> → Medium · up to <strong>90th</strong> → High · above → Very High.
+        </p>
+      </div>
+
+    </div>
+
+    <!-- Anatomy — full width with plain-language descriptions -->
+    <div class="card card-anatomy">
+      <div class="card-head-row">
+        <div class="card-icon" style="--icon-bg:#f4ecff;--icon-fg:#7c3aed">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        </div>
+        <div>
+          <h3>Anatomical Location</h3>
+          <p class="card-sub">Where the tumor sits in the brain — top 5 regions it overlaps (AAL3 atlas), with what each region normally does</p>
+        </div>
+      </div>
+      <ul id="anatomy-list" class="anatomy-list">
+        <li class="muted">Upload a study to compute regional involvement.</li>
+      </ul>
+      <p class="card-explain">
+        Each percentage is the share of the whole-tumor mask that falls inside that labelled region. <strong>Left / Right</strong> is the brain hemisphere; the small grey code (e.g. <em>Calcarine_R</em>) is the raw atlas label. Localisation is approximate — the AAL atlas is in MNI152 space while BraTS scans are in SRI24 space.
+      </p>
+    </div>
+
+    <!-- Viewers below -->
+    <div class="viewers-section">
+      <div class="section-head">
+        <h2>3D &amp; Slice Visualisation</h2>
+        <p>Drag to rotate the 3D render, scroll to zoom. The slice viewer keeps the three orthogonal planes in sync — click anywhere to move the crosshair.</p>
+      </div>
+      <div class="viewers">
+        <div class="viewer-card">
+          <div class="viewer-head">
+            <h3>3D Volume Rendering</h3>
+            <span class="viewer-tag">Rotate · Zoom · Opacity</span>
+          </div>
+          <canvas id="nv3d-canvas"></canvas>
+        </div>
+        <div class="viewer-card">
+          <div class="viewer-head">
+            <h3>Slice Viewer</h3>
+            <span class="viewer-tag">Axial · Coronal · Sagittal</span>
+          </div>
+          <canvas id="nvmpr-canvas"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <footer class="pagefoot">
+      <p>Research demonstration. Not a medical device.</p>
+    </footer>
+  </section>
+</main>
+</body>
+</html>
