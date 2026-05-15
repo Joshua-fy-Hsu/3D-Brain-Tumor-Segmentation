@@ -86,7 +86,7 @@ if [ -z "${TMUX:-}" ]; then
   tmux new-session -d -s "$SESSION" -c "$REPO_ABS" \
        -e "EPOCHS=${EPOCHS:-300}" \
        -e "WARMUP=${WARMUP:-10}" \
-       -e "EXP_NAME=${EXP_NAME:-phase6_v2}" \
+       -e "EXP_NAME=${EXP_NAME:-phase6}" \
        -e "SKIP_SANITY=${SKIP_SANITY:-0}" \
        -e "SKIP_COMPLEXITY=${SKIP_COMPLEXITY:-0}" \
        -e "SKIP_FULL=${SKIP_FULL:-0}" \
@@ -101,7 +101,7 @@ fi
 # ---------------------------------------------------------------------------
 EPOCHS="${EPOCHS:-300}"
 WARMUP="${WARMUP:-10}"
-EXP_NAME="${EXP_NAME:-phase6_v2}"
+EXP_NAME="${EXP_NAME:-phase6}"
 SKIP_SANITY="${SKIP_SANITY:-0}"
 SKIP_COMPLEXITY="${SKIP_COMPLEXITY:-0}"
 SKIP_FULL="${SKIP_FULL:-0}"

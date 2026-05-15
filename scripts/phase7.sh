@@ -20,11 +20,28 @@
 # so the generic train_variant.py / evaluate_variant.py drive them unchanged.
 #
 # Training preset per baseline (recipe-fair, not "best possible"):
-#   swinunetr -> transformer preset (EMA, GPU-aug, grad-clip, bf16)
-#   segresnet -> base_cnn preset    (fp16 + GradScaler, val_loss criterion)
+#   swinunetr -> transformer preset + FORCED bf16 (transformer_preset itself
+#                defaults to fp16; Swin windowed-attention softmax overflows
+#                in fp16, and AURAS/full trained in bf16 - so we align it).
+#   segresnet -> base_cnn preset  (fp16 + GradScaler, val_loss criterion) -
+#                this is the EXACT recipe `base_cnn` was trained with.
 #   unet3d    -> base_cnn preset
 # Eval AMP dtype is auto from each variant's arch_family (transformer->bf16,
 # cnn->fp16) - no override needed.
+#
+# RECIPE ALIGNMENT (read before quoting any number):
+#   The comparison vs AURAS is reported TWO ways, because results/full/eval_*
+#   from Phase 6 is ensemble-of-5 + 32-view TTA - not a like-for-like eval:
+#     - [system]            AURAS full recipe + ensemble + extended TTA
+#                           vs baseline standard config. The "is the deployed
+#                           system better" claim. Standard in the literature.
+#     - [recipe-controlled] AURAS evaluated with a SINGLE best_model.pth +
+#                           standard 8-way TTA (this script runs that eval)
+#                           vs baseline standard config. Removes the
+#                           ensemble/extended-TTA confound. The residual gap
+#                           is loss (Boundary/Uncertainty heads) + deep
+#                           supervision, both architecture-intrinsic to AURAS
+#                           and unavailable to a plain baseline - state that.
 #
 # Pipeline (looped over each baseline):
 #   1. Sanity (CUDA): build from registry; fp32 forward+backward at 128^3;
@@ -32,11 +49,13 @@
 #      eval-mode output is a bare (1,4,128,128,128) tensor; autocast eval
 #      forward (per arch_family) is finite.
 #   2. Complexity profile -> appended to results/complexity.csv.
-#   3. Train the baseline (its preset, $EPOCHS epochs).
-#   4. Eval the baseline (standard config: default modes + V_min sweep,
-#      no ensemble / extended TTA - that's an AURAS-only recipe).
-#   5. Paired Wilcoxon: `full` tta_post vs <baseline> tta_post (the gate:
-#      AURAS must win). Plus `base_cnn` vs `unet3d` once (recipe floor check).
+#   3. Train the baseline (its preset, $EPOCHS epochs; swinunetr forced bf16).
+#   4. Eval the baseline (standard config: default modes + V_min sweep, no
+#      ensemble / extended TTA). Then eval `full` ONCE single-checkpoint +
+#      standard TTA -> results/full/eval_${EXP_NAME}_single (the matched arm).
+#   5. Paired Wilcoxon, TWO comparisons per baseline: [system] vs the newest
+#      ensemble results/full/eval_*, and [recipe-controlled] vs the single-
+#      checkpoint full eval. Plus `base_cnn` vs `unet3d` once (recipe floor).
 #
 # Auto-launches into a tmux session named "phase7". Detach: Ctrl-b d.
 # Reattach: tmux attach -t phase7. Kill: tmux kill-session -t phase7.
@@ -122,6 +141,16 @@ preset_for() {
     swinunetr) echo "transformer" ;;
     segresnet|unet3d) echo "base_cnn" ;;
     *) echo "auto" ;;
+  esac
+}
+
+# AMP override per baseline. transformer_preset defaults to fp16, but Swin's
+# windowed-attention softmax overflows in fp16 and AURAS/full trained in bf16
+# - so swinunetr is forced to bf16 to stay aligned. Others use preset default.
+amp_for() {
+  case "$1" in
+    swinunetr) echo "--amp-dtype bf16" ;;
+    *) echo "" ;;
   esac
 }
 
@@ -228,10 +257,11 @@ if [ "$SKIP_TRAIN" = "0" ]; then
   echo "--- [3/5] train baselines ($EPOCHS epochs, warmup=$WARMUP) ---"
   for b in $BASELINES; do
     P="$(preset_for "$b")"
+    A="$(amp_for "$b")"
     echo
-    echo ">>> train: $b (preset=$P) <<<"
+    echo ">>> train: $b (preset=$P ${A:+$A}) <<<"
     python src/training/train_variant.py --variant "$b" \
-        --preset "$P" --epochs "$EPOCHS" --warmup "$WARMUP" \
+        --preset "$P" $A --epochs "$EPOCHS" --warmup "$WARMUP" \
         --exp-name "$EXP_NAME"
   done
 fi
@@ -268,6 +298,22 @@ print(df[cols].to_string(index=False))
 PY
     fi
   done
+
+  # ---- recipe-controlled arm: eval AURAS (`full`) ONCE, single best_model
+  #      checkpoint, standard 8-way TTA, NO ensemble / extended TTA - matched
+  #      to the baselines' eval recipe. evaluate_variant.py auto-discovers the
+  #      newest full-matching best_model.pth (state_dict matched) when
+  #      --checkpoint is omitted. This is the apples-to-apples comparison row.
+  echo
+  echo ">>> eval: full (SINGLE ckpt, no ensemble/extended-TTA - matched arm) <<<"
+  if ls logs/run_full_*/best_model.pth >/dev/null 2>&1; then
+    python src/evaluation/evaluate_variant.py --variant full \
+        --vmin-sweep --run-name "eval_${EXP_NAME}_single"
+  else
+    echo "[warn] no logs/run_full_*/best_model.pth found - skipping the"
+    echo "       recipe-controlled full eval. Phase 6 must have trained \`full\`"
+    echo "       first; without it only the [system] comparison can run."
+  fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -277,25 +323,48 @@ fi
 if [ "$SKIP_COMPARE" = "0" ]; then
   echo
   echo "--- [5/5] paired Wilcoxon (TTA + postprocess) ---"
-  FD=$(ls -1d results/full/eval_* 2>/dev/null | sort | tail -1)
-  if [ -z "$FD" ]; then
+  # [system] arm: newest ensemble full eval (Phase 6) - exclude the *_single
+  # dirs this script writes for the matched arm.
+  # `ls -1dt` = newest-by-mtime first (NOT lexicographic `sort` - dir names
+  # are now `eval_phaseN`, not timestamps, so string order != chronological;
+  # this matches aggregate_final.latest_eval_dir / find_latest_checkpoint).
+  # `|| true`: grep exits 1 when nothing matches; without it `set -e` +
+  # `pipefail` would abort here before the graceful fallback below.
+  FD_SYS=$(ls -1dt results/full/eval_* 2>/dev/null | grep -v '_single$' | head -1 || true)
+  # [recipe-controlled] arm: the single-checkpoint full eval written in step 4.
+  FD_CTRL="results/full/eval_${EXP_NAME}_single"
+  [ -d "$FD_CTRL" ] || FD_CTRL=$(ls -1dt results/full/eval_*_single 2>/dev/null | head -1)
+  if [ -z "$FD_SYS" ] && [ -z "${FD_CTRL:-}" ]; then
     echo "[error] no results/full/eval_* - Phase 6 must run before Phase 7 compare."
     exit 1
   fi
-  echo "AURAS (full) eval : $FD"
+  echo "AURAS [system]           eval : ${FD_SYS:-<missing>}"
+  echo "AURAS [recipe-controlled] eval : ${FD_CTRL:-<missing, run step 4>}"
   for b in $BASELINES; do
     BD="results/${b}/eval_${EXP_NAME}"
-    [ -d "$BD" ] || BD=$(ls -1d results/${b}/eval_* 2>/dev/null | sort | tail -1)
+    [ -d "$BD" ] || BD=$(ls -1dt results/${b}/eval_* 2>/dev/null | grep -v '_single$' | head -1)
     if [ -z "${BD:-}" ] || [ ! -f "$BD/per_case_metrics.csv" ]; then
       echo "[warn] no eval folder for $b - skipping its comparison."
       continue
     fi
-    echo
-    echo ">>> AURAS (full) vs $b  [gate: AURAS wins, p<0.05] <<<"
-    python -m evaluation.stats compare \
-        "$BD/per_case_metrics.csv" \
-        "$FD/per_case_metrics.csv" \
-        --mode tta_post --label-a "$b" --label-b AURAS
+    if [ -n "$FD_SYS" ] && [ -f "$FD_SYS/per_case_metrics.csv" ]; then
+      echo
+      echo ">>> [system] AURAS (full, ensemble+32-TTA) vs $b  [gate: AURAS wins, p<0.05] <<<"
+      python -m evaluation.stats compare \
+          "$BD/per_case_metrics.csv" \
+          "$FD_SYS/per_case_metrics.csv" \
+          --mode tta_post --label-a "$b" --label-b AURAS
+    fi
+    if [ -n "${FD_CTRL:-}" ] && [ -f "$FD_CTRL/per_case_metrics.csv" ]; then
+      echo
+      echo ">>> [recipe-controlled] AURAS (full, single ckpt + 8-way TTA) vs $b <<<"
+      echo "    (matched eval recipe; residual gap = aux-head loss + deep"
+      echo "     supervision, both AURAS-intrinsic and unavailable to a baseline)"
+      python -m evaluation.stats compare \
+          "$BD/per_case_metrics.csv" \
+          "$FD_CTRL/per_case_metrics.csv" \
+          --mode tta_post --label-a "$b" --label-b AURAS-single
+    fi
   done
 
   # Recipe floor: our minimal CNN vs the vanilla U-Net. Same family, so a
@@ -303,8 +372,8 @@ if [ "$SKIP_COMPARE" = "0" ]; then
   case " $BASELINES " in
     *" unet3d "*)
       UD="results/unet3d/eval_${EXP_NAME}"
-      [ -d "$UD" ] || UD=$(ls -1d results/unet3d/eval_* 2>/dev/null | sort | tail -1)
-      CD=$(ls -1d results/base_cnn/eval_* 2>/dev/null | sort | tail -1)
+      [ -d "$UD" ] || UD=$(ls -1dt results/unet3d/eval_* 2>/dev/null | head -1)
+      CD=$(ls -1dt results/base_cnn/eval_* 2>/dev/null | head -1 || true)
       if [ -n "${UD:-}" ] && [ -n "${CD:-}" ] \
          && [ -f "$UD/per_case_metrics.csv" ] && [ -f "$CD/per_case_metrics.csv" ]; then
         echo
@@ -325,12 +394,22 @@ echo "================================================================"
 echo "Phase 7 done."
 echo "  baseline logs  : logs/run_<baseline>_${EXP_NAME}_*/"
 echo "  baseline eval  : results/<baseline>/eval_${EXP_NAME}/"
+echo "  matched arm    : results/full/eval_${EXP_NAME}_single/  (single ckpt)"
 echo "  complexity     : results/complexity.csv"
 echo
-echo "  Phase-7 gate: AURAS (full) significantly beats swinunetr / segresnet /"
-echo "  unet3d on tta_post mean Dice (paired Wilcoxon, p<0.05), and base_cnn"
-echo "  is no worse than the vanilla unet3d floor. Feed these into Phase 8"
-echo "  (evaluation.aggregate_final) for the final cross-model table."
+echo "  Two comparisons were reported per baseline:"
+echo "   [system]            full+ensemble+32-TTA vs baseline - the deployed"
+echo "                       system claim (standard in the literature)."
+echo "   [recipe-controlled] full single-ckpt + 8-way TTA vs baseline - the"
+echo "                       eval recipe is matched; quote THIS for any"
+echo "                       'architecture is better' claim, and note the"
+echo "                       residual gap is the Boundary/Uncertainty loss +"
+echo "                       deep supervision (architecture-intrinsic to AURAS)."
+echo "  Plus base_cnn vs unet3d: recipe floor (same family, recipe-matched)."
+echo "  Phase-7 gate: AURAS beats swinunetr / segresnet / unet3d on tta_post"
+echo "  mean Dice (paired Wilcoxon, p<0.05) on BOTH arms; base_cnn >= unet3d."
+echo "  Feed these into Phase 8 (evaluation.aggregate_final) for the final"
+echo "  cross-model table."
 echo "================================================================"
 echo
 echo "Detach now with Ctrl-b d, or just close the terminal - tmux keeps it."

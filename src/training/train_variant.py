@@ -11,7 +11,7 @@ Usage:
   python src/training/train_variant.py --variant base_cnn --epochs 150 --lr 5e-5
 
 Outputs:
-  logs/<variant>_<exp_name>_<timestamp>/
+  logs/run_<variant>_<exp_name>_<timestamp>/
     best_model.pth      (state_dict only — no optimizer)
     training_log.csv
     tensorboard/        (via SummaryWriter)
@@ -79,8 +79,6 @@ class TrainingPreset:
     tumor_sample_prob: float = 0.5
     # Param groups: if model exposes parameter_groups(), use the split optimizer
     use_param_groups: bool = True
-    # Tag suffix for log dir
-    log_suffix: str = ""
     # Phase 4 — uncertainty-aware loss wrapper around the base seg loss
     use_uncertainty_loss: bool = False
     lambda_unc: float = 0.05
@@ -114,24 +112,22 @@ def base_cnn_preset() -> TrainingPreset:
         ncr_sample_prob=0.0,
         tumor_sample_prob=0.5,
         use_param_groups=False,
-        log_suffix="DiceFocal",
     )
 
 
 def transformer_preset() -> TrainingPreset:
-    return TrainingPreset(log_suffix="DiceFocalTrans")
+    return TrainingPreset()
 
 
 def spectral_swin_preset() -> TrainingPreset:
     """bf16 mandatory — fp16 overflows windowed-attention softmax at 16^3."""
-    return TrainingPreset(amp_dtype="bf16", log_suffix="DiceFocalSwin")
+    return TrainingPreset(amp_dtype="bf16")
 
 
 def uncertainty_preset() -> TrainingPreset:
     """Phase 4 — spectral_swin recipe + uncertainty-aware loss wrapper."""
     return TrainingPreset(
         amp_dtype="bf16",
-        log_suffix="DiceFocalUnc",
         use_uncertainty_loss=True,
         lambda_unc=0.05,
         target_unc_at_high_dice=0.0,
@@ -148,7 +144,6 @@ def boundary_preset() -> TrainingPreset:
     """
     return TrainingPreset(
         amp_dtype="bf16",
-        log_suffix="DiceFocalBnd",
         use_uncertainty_loss=True,
         lambda_unc=0.05,
         target_unc_at_high_dice=0.0,
@@ -176,7 +171,6 @@ def full_preset() -> TrainingPreset:
       - epochs/warmup: phase6.sh passes 300/10 via CLI.
     """
     p = boundary_preset()
-    p.log_suffix = "DiceFocalFull"
     p.top_k_snapshots = 5
     p.snapshot_min_gap = 15
     p.lambda_boundary = 0.25
@@ -546,8 +540,6 @@ def main():
     name_parts = [variant]
     if args.exp_name:
         name_parts.append(args.exp_name)
-    if preset.log_suffix:
-        name_parts.append(preset.log_suffix)
     name_parts.append(timestamp)
     log_dir = os.path.join(ROOT, "logs", "run_" + "_".join(name_parts))
     os.makedirs(log_dir, exist_ok=True)

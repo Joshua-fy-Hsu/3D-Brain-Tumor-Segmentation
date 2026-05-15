@@ -19,13 +19,13 @@ OUT = ROOT / "docs" / "report_figures"
 OUT.mkdir(parents=True, exist_ok=True)
 
 VARIANTS = [
-    ("base_cnn",      "run_base_cnn_phase1_matched_DiceFocalTrans_20260509-024641", "Base CNN",       "#888888"),
-    ("cross_modal",   "run_cross_modal_phase1_DiceFocalTrans_20260508-183620",      "+ Cross-Modal",  "#1f77b4"),
-    ("frequency",     "run_frequency_phase2_DiceFocalTrans_20260509-135015",        "+ Frequency",    "#2ca02c"),
-    ("spectral_swin", "run_spectral_swin_phase3_DiceFocalSwin_20260510-003028",     "+ Spectral Swin","#9467bd"),
-    ("uncertainty",   "run_uncertainty_phase4_DiceFocalUnc_20260510-164216/run_uncertainty_phase4_DiceFocalUnc_20260510-164216", "+ Uncertainty",  "#ff7f0e"),
-    ("boundary",      "run_boundary_phase5_DiceFocalBnd_20260511-075902",           "+ Boundary",     "#d62728"),
-    ("full",          "run_full_phase6_v2_DiceFocalFull_20260512-205520",           "Full",           "#000000"),
+    ("base_cnn",      "run_base_cnn_phase1_matched_20260509-024641", "Base CNN",       "#888888"),
+    ("cross_modal",   "run_cross_modal_phase1_20260508-183620",      "+ Cross-Modal",  "#1f77b4"),
+    ("frequency",     "run_frequency_phase2_20260509-135015",        "+ Frequency",    "#2ca02c"),
+    ("spectral_swin", "run_spectral_swin_phase3_20260510-003028",     "+ Spectral Swin","#9467bd"),
+    ("uncertainty",   "run_uncertainty_phase4_20260510-164216",       "+ Uncertainty",  "#ff7f0e"),
+    ("boundary",      "run_boundary_phase5_20260511-075902",           "+ Boundary",     "#d62728"),
+    ("full",          "run_full_phase6_20260512-205520",           "Full",           "#000000"),
 ]
 
 
@@ -158,13 +158,13 @@ def complexity_tradeoff():
 
 def calibration_ts_effect():
     """ECE_pos for ET / TC / WT, baseline vs. + Temperature Scale, for the Full variant."""
-    rows = read_csv(ROOT / "results" / "full" / "eval_phase6_v2_rank1_clean" / "summary.csv")
+    rows = read_csv(ROOT / "results" / "full" / "eval_phase6" / "summary.csv")
     baseline = next(r for r in rows if r["Method"] == "Transformer baseline")
     ts       = next(r for r in rows if r["Method"] == "+ Temperature Scale")
     # ECE_pos is a single mean across regions in summary.csv. We get it from evaluation_meta.json
     # if available; here we just plot the single mean value pair.
     import json
-    meta_path = ROOT / "results" / "full" / "eval_phase6_v2_rank1_clean" / "evaluation_meta.json"
+    meta_path = ROOT / "results" / "full" / "eval_phase6" / "evaluation_meta.json"
     meta = json.loads(meta_path.read_text())
 
     cal_pos_base = meta["calibration_pos"]["baseline"]
