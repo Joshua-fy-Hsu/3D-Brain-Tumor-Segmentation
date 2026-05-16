@@ -2,7 +2,7 @@ import torch
 import os
 
 # --- PATH CONFIGURATION ---
-TRAIN_DATA_PATH = r"D:\University\Projects\Brain_Tumor_Segmentation\data"
+TRAIN_DATA_PATH = r"/workspace/3D-Brain-Tumor-Segmentation/data/BraTS2021_Optimized"
 
 # List of MRI modalities used as input channels.
 MODALITIES = ["t1", "t1ce", "t2", "flair"]
