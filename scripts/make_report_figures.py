@@ -37,7 +37,11 @@ def read_csv(path):
 def training_curves_dice():
     fig, ax = plt.subplots(figsize=(8, 4.5))
     for variant, run_dir, label, color in VARIANTS:
-        rows = read_csv(LOGS / run_dir / "training_log.csv")
+        log_path = LOGS / run_dir / "training_log.csv"
+        if not log_path.exists():
+            print(f"[skip] {label}: no training_log.csv at {run_dir}")
+            continue
+        rows = read_csv(log_path)
         epochs = [int(r["epoch"]) for r in rows]
         dice   = [float(r["val_dice_mean"]) for r in rows]
         lw = 2.2 if variant == "full" else 1.3
@@ -192,10 +196,11 @@ def calibration_ts_effect():
 
 
 if __name__ == "__main__":
-    training_curves_dice()
-    training_curves_loss()
-    ablation_dice()
-    ablation_hd95_nsd()
-    complexity_tradeoff()
-    calibration_ts_effect()
-    print(f"Wrote figures to {OUT}")
+    # Each figure is independent; a missing input for one must not block the rest.
+    for fn in (training_curves_dice, training_curves_loss, ablation_dice,
+               ablation_hd95_nsd, complexity_tradeoff, calibration_ts_effect):
+        try:
+            fn()
+        except Exception as e:
+            print(f"[skip] {fn.__name__}: {type(e).__name__}: {e}")
+    print(f"Wrote available figures to {OUT}")
