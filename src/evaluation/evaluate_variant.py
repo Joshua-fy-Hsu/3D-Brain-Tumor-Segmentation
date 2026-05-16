@@ -69,7 +69,7 @@ def main():
         from evaluation.ensemble import load_ensemble, resolve_ckpt_glob
         members_paths = resolve_ckpt_glob(args.ensemble_ckpts)
         # Sniff the head shape from the first member to pick output_mode.
-        sniffed = detect_output_mode(members_paths[0])
+        sniffed = detect_output_mode(members_paths[0], fallback=registry_output_mode)
         try:
             ens = load_ensemble(members_paths, variant=variant, device=device,
                                 output_mode=sniffed)
@@ -87,7 +87,7 @@ def main():
         if not os.path.exists(ckpt_path):
             raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
         # Sniff the actual output_mode from the checkpoint head shape.
-        sniffed = detect_output_mode(ckpt_path)
+        sniffed = detect_output_mode(ckpt_path, fallback=registry_output_mode)
         # Try with sniffed mode first; fall back to registry default if the
         # variant doesn't support output_mode kwarg.
         try:
@@ -109,7 +109,7 @@ def main():
                 f"No checkpoint compatible with variant '{variant}' found under "
                 f"logs/run_*/best_model.pth. Pass --checkpoint to point at one."
             )
-        sniffed = detect_output_mode(ckpt_path)
+        sniffed = detect_output_mode(ckpt_path, fallback=registry_output_mode)
         try:
             model = build_variant(variant, output_mode=sniffed).to(device)
             output_mode = sniffed

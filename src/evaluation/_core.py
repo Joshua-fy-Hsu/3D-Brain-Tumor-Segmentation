@@ -89,16 +89,28 @@ def wrap_for_eval(model: nn.Module) -> nn.Module:
 # ----------------------------------------------------------------------
 # Checkpoint / model helpers
 # ----------------------------------------------------------------------
-def detect_output_mode(ckpt_path):
+def detect_output_mode(ckpt_path, fallback=None):
     """Inspect a checkpoint and return 'softmax' (4-channel head) or
     'sigmoid' (3-channel region head) based on the terminal Conv3d's
     out-channels. Phase 6 `full` replaces ``final_conv`` with
-    ``fusion_head.final_conv`` so we check both keys."""
+    ``fusion_head.final_conv`` so we check both keys.
+
+    Sniffing is a heuristic tied to *this project's* head naming. Phase 7
+    MONAI baselines (SwinUNETR / SegResNet / BasicUNet, wrapped in
+    ``_SegWrapper``) name their head differently, so neither key is present.
+    When ``fallback`` is given (the registry's declared output_mode, which is
+    authoritative for a known variant) it is returned instead of raising.
+    With no fallback the legacy behaviour — a hard KeyError — is preserved
+    for the legacy evaluate_cnn/transformer callers."""
     sd = torch.load(ckpt_path, map_location="cpu", weights_only=True)
     if "final_conv.weight" in sd:
         out_ch = sd["final_conv.weight"].shape[0]
     elif "fusion_head.final_conv.weight" in sd:
         out_ch = sd["fusion_head.final_conv.weight"].shape[0]
+    elif fallback is not None:
+        print(f"[detect_output_mode] no recognised head key in {ckpt_path}; "
+              f"using registry-declared output_mode='{fallback}'")
+        return fallback
     else:
         raise KeyError(
             f"{ckpt_path}: cannot detect output mode — neither "
