@@ -290,10 +290,13 @@ if [ "$SKIP_EVAL" = "0" ]; then
     if [ -f "$BDIR/summary.csv" ]; then
       echo
       echo "--- $b summary.csv (Dice / HD95 / NSD) ---"
-      python - <<PY
+      # `|| true`: this is a cosmetic summary print - a pandas hiccup here
+      # must never abort the eval/compare pipeline (it did once: summary.csv's
+      # label column is `Method`, not `mode`, so don't hardcode the name).
+      python - <<PY || true
 import pandas as pd
 df = pd.read_csv("$BDIR/summary.csv")
-cols = ["mode"] + [c for c in df.columns if c.lower().startswith(("dice", "hd95", "nsd"))]
+cols = [df.columns[0]] + [c for c in df.columns if c.lower().startswith(("dice", "hd95", "nsd"))]
 print(df[cols].to_string(index=False))
 PY
     fi
