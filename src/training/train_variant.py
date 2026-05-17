@@ -179,33 +179,6 @@ def full_preset() -> TrainingPreset:
     return p
 
 
-def full_no_uncertainty_preset() -> TrainingPreset:
-    """Phase 9 — `full` recipe minus the uncertainty-loss term.
-
-    full_no_uncertainty has no variance head, so UncertaintyAwareLoss would
-    have nothing to anchor. Drop only that wrapper; the boundary head + loss
-    stay → criterion becomes BoundaryAwareLoss(RegionWiseDiceFocalLoss).
-    Everything else (bf16, top-K=5, λ_b ramp, 300 ep) is identical to `full`.
-    """
-    p = full_preset()
-    p.log_suffix = "DiceFocalFullNoUnc"
-    p.use_uncertainty_loss = False
-    return p
-
-
-def full_no_boundary_preset() -> TrainingPreset:
-    """Phase 9 — `full` recipe minus the boundary-loss term.
-
-    full_no_boundary has no boundary head. Drop only the boundary wrapper; the
-    uncertainty head + loss stay → criterion becomes
-    UncertaintyAwareLoss(RegionWiseDiceFocalLoss) on the full architecture.
-    """
-    p = full_preset()
-    p.log_suffix = "DiceFocalFullNoBnd"
-    p.use_boundary_loss = False
-    return p
-
-
 # Map variant name -> preset factory. New variants register here.
 TRAINING_PRESETS = {
     "base_cnn":            base_cnn_preset,
@@ -214,16 +187,8 @@ TRAINING_PRESETS = {
     "uncertainty":         uncertainty_preset,
     "boundary":            boundary_preset,
     "full":                full_preset,
-    # Phase 9 leave-one-out ablation. All derive from full_preset so the
-    # training recipe is identical to `full`; only the removed component
-    # varies. no_cross_modal / no_freq / no_arch keep BOTH aux heads → the
-    # `full` loss is unchanged, so they map straight to full_preset.
-    "full_no_cross_modal": full_preset,
-    "full_no_freq":        full_preset,
-    "full_no_arch":        full_preset,
-    "full_no_uncertainty": full_no_uncertainty_preset,
-    "full_no_boundary":    full_no_boundary_preset,
-    # Default for any still-missing variant is the transformer preset.
+    # Phase 1+ variants will be added as they're implemented. Default for any
+    # missing variant is the transformer preset (the more featureful one).
 }
 
 
