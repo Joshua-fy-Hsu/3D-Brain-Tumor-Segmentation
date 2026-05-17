@@ -282,9 +282,14 @@ if [ "$SKIP_EVAL" = "0" ]; then
       exit 1
     fi
     echo "[info] checkpoint from $RUN_DIR"
+    # --mc-T 1: baselines have dropout (segresnet/swinunetr) so MC-Dropout
+    # would run 20 sliding-window passes/case (~3x the per-case cost). The
+    # phase-7 comparison is Wilcoxon on `tta_post` only — MC-Dropout rows
+    # feed uncertainty diagnostics nothing here consumes. 1 pass keeps the
+    # row present without the 20x tax.
     python src/evaluation/evaluate_variant.py --variant "$b" \
         --checkpoint "${RUN_DIR}/best_model.pth" \
-        --vmin-sweep --run-name "eval_${EXP_NAME}"
+        --vmin-sweep --mc-T 1 --run-name "eval_${EXP_NAME}"
 
     BDIR="results/${b}/eval_${EXP_NAME}"
     if [ -f "$BDIR/summary.csv" ]; then
@@ -311,7 +316,7 @@ PY
   echo ">>> eval: full (SINGLE ckpt, no ensemble/extended-TTA - matched arm) <<<"
   if ls logs/run_full_*/best_model.pth >/dev/null 2>&1; then
     python src/evaluation/evaluate_variant.py --variant full \
-        --vmin-sweep --run-name "eval_${EXP_NAME}_single"
+        --vmin-sweep --mc-T 1 --run-name "eval_${EXP_NAME}_single"
   else
     echo "[warn] no logs/run_full_*/best_model.pth found - skipping the"
     echo "       recipe-controlled full eval. Phase 6 must have trained \`full\`"
