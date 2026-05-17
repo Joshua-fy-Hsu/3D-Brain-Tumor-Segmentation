@@ -1,0 +1,24 @@
+# Normalize text files; let Git handle line endings.
+* text=auto
+
+# Shell scripts MUST stay LF — CRLF breaks the bash/tmux phase*.sh pipelines.
+*.sh text eol=lf
+
+# Keep these LF too (run/consumed in Unix-y contexts).
+*.py   text eol=lf
+*.js   text eol=lf
+*.json text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.md   text eol=lf
+
+# Binary assets — never touch.
+*.pdf  binary
+*.pptx binary
+*.docx binary
+*.npy  binary
+*.pth  binary
+*.nii  binary
+*.gz   binary
+*.png  binary
+*.jpg  binary
