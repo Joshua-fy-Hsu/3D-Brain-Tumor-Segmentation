@@ -29,6 +29,10 @@ if SRC not in sys.path:
 from model.model import ResUnet3D
 from model.model_transformer import ResUnet3DTransformer
 from model.trans_resunet import TransResUNet3D
+# Clean-slate CNN+Transformer built solely to beat the unet3d baseline.
+# Standalone — does NOT import from model.model / model_transformer /
+# trans_resunet (the AURAS family). See src/model/hybrid.py.
+from model.hybrid import HybridUNet3D
 # Phase 7 baseline factories. These do a *lazy* MONAI import inside the
 # factory body, so importing them here keeps registry import MONAI-free.
 from model.baselines import build_segresnet, build_swinunetr, build_unet3d
@@ -157,6 +161,19 @@ VARIANTS: Dict[str, VariantSpec] = {
         "softmax", "transformer",
     ),
 
+    # ---- Clean-slate model — built only to beat the unet3d baseline ----------
+    # TransBTS-style: residual CNN encoder + transformer at the 8^3 bottleneck
+    # + CNN decoder, 3-level deep supervision, 2x Dropout3d (eval MC-Dropout).
+    # 4-class softmax head → standard argmax decode (no sigmoid TC-leak).
+    # arch_family="cnn" → eval AMP fp16, exactly like unet3d. Trained with the
+    # dedicated `hybrid` preset (a near-exact clone of unet3d's winning recipe
+    # + top-K=5 snapshot ensemble). Fully standalone (model/hybrid.py).
+    "hybrid": (
+        HybridUNet3D,
+        dict(in_channels=5, num_classes=4, base_filters=32),
+        "softmax", "cnn",
+    ),
+
     # ---- Efficient variant (Phase 6b — pruned/distilled from `full`) ---------
     "full_efficient":   (_not_implemented("full_efficient"),   {}, "softmax", "transformer"),
 
@@ -191,13 +208,20 @@ VARIANTS: Dict[str, VariantSpec] = {
 # Product-facing display names. The registry keys above are load-bearing
 # (logs/run_<key>_*, results/<key>/, scripts/phase*.sh, checkpoint matching)
 # and must NEVER change. These are the brand names shown in the web UI,
-# report exports, and figures. `full` is AURAS; the ablation rows are the
-# AURAS family. Anything not listed falls back to its raw key.
+# report exports, and figures. Anything not listed falls back to its raw key.
 #
-# AURAS = All-modality, Uncertainty-aware, Residual, Aggregation, Spectral.
+# The deployed/headline model is `full_lean` -> ATLAS:
+#   A = All-modality   (Modality Stems + Cross-Modal Attention; all 4 MRI)
+#   T = Transformer    (Spectral-Swin Stage)
+#   L = Localization   (TC-Refine head — dedicated tumor-core pathway)
+#   A = Aggregation    (Multi-scale Fusion Head)
+#   S = Spectral       (Spectral-Swin spectral branch)
+# `full` keeps the legacy AURAS name (the bloated predecessor: All-modality,
+# Uncertainty-aware, Residual, Aggregation, Spectral); the ablation rows are
+# the AURAS family.
 DISPLAY_NAMES: Dict[str, str] = {
     "full":          "AURAS",
-    "full_lean":     "AURAS",
+    "full_lean":     "ATLAS",
     "boundary":      "AURAS-B",
     "uncertainty":   "AURAS-U",
     "spectral_swin": "AURAS-S",

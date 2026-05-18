@@ -68,6 +68,11 @@ class TrainingPreset:
     use_grad_clip: bool = True
     grad_clip_max_norm: float = 1.0
     amp_dtype: str = "fp16"           # "fp16" or "bf16". fp16 → use GradScaler.
+    # Linear-warmup length. None → fall back to config.WARMUP_EPOCHS (legacy
+    # behaviour, preserved for every existing preset). A preset may lengthen
+    # it (e.g. hybrid: transformer + small data wants a gentler ramp). CLI
+    # --warmup still wins over this.
+    warmup_epochs: Optional[int] = None
     early_stop: bool = True
     persistent_workers: bool = True
     # Best-model selection: "val_loss" (lower better) or "val_dice" (higher better)
@@ -207,6 +212,44 @@ def full_lean_preset() -> TrainingPreset:
     return p
 
 
+def hybrid_preset() -> TrainingPreset:
+    """Dedicated preset for the clean-slate `hybrid` model — a deliberate,
+    explicit clone of the recipe that made `unet3d` win (the default
+    TrainingPreset / transformer preset: EMA, GPU aug, grad-clip, val_dice
+    selection, ncr_sample_prob=0.25, class_weights (0.1,2,1,1), ce_weight 0.3,
+    fp16). Written out by name so it is reproducible rather than silently
+    inherited via get_preset()'s fallback.
+
+    Two intentional, beneficial deviations from a strict no-DS single
+    baseline (the goal here is to WIN, not to be an unbiased ablation):
+      1. Deep supervision — the model emits (final, ds1, ds2) so
+         RegionWiseDiceFocalLoss.forward auto-engages its DS path
+         (paper-validated, nnU-Net standard).
+      2. top-K=5 snapshot ensemble — TopKSnapshotSaver activates because
+         best_metric stays "val_dice" and top_k_snapshots > 1; evaluated
+         later via `evaluate_variant.py --ensemble-ckpts`.
+
+    fp16 (exact unet3d parity) and a single AdamW group (like unet3d's
+    _SegWrapper, which has no parameter_groups()).
+
+    Third intentional deviation: warmup_epochs=20 (~7% of a 300-ep run, vs
+    config's 5 ≈ 1.7%). The bottleneck transformer + AdamW + the small
+    (~1k-volume) regime want a gentler LinearLR ramp than a pure CNN; 5
+    epochs is only ~155 optimizer steps at effective batch 32. Transformer-
+    motivated, so unlike unet3d (pure CNN) it is not a like-for-like knob —
+    disclosed as a beneficial deviation, same class as DS / ensemble. LR
+    (1e-4) and cosine annealing (→1e-6 over the post-warmup epochs) are kept
+    at unet3d parity; --warmup / --lr / --epochs still override per run.
+    """
+    p = TrainingPreset()          # = unet3d's effective recipe
+    p.amp_dtype = "fp16"          # exact unet3d parity (already the default)
+    p.use_param_groups = False    # single AdamW group, like unet3d
+    p.warmup_epochs = 20          # longer ramp: transformer + small data
+    p.top_k_snapshots = 5         # snapshot ensemble (same as full_preset)
+    p.snapshot_min_gap = 15
+    return p
+
+
 # Map variant name -> preset factory. New variants register here.
 TRAINING_PRESETS = {
     "base_cnn":            base_cnn_preset,
@@ -216,6 +259,7 @@ TRAINING_PRESETS = {
     "boundary":            boundary_preset,
     "full":                full_preset,
     "full_lean":           full_lean_preset,
+    "hybrid":              hybrid_preset,
     # Phase 1+ variants will be added as they're implemented. Default for any
     # missing variant is the transformer preset (the more featureful one).
 }
@@ -559,7 +603,13 @@ def main():
     # Hyperparams (CLI > config)
     DEVICE = config.DEVICE
     NUM_EPOCHS = args.epochs or config.NUM_EPOCHS
-    WARMUP_EPOCHS = args.warmup if args.warmup is not None else config.WARMUP_EPOCHS
+    # Warmup precedence: CLI --warmup > preset.warmup_epochs > config default.
+    if args.warmup is not None:
+        WARMUP_EPOCHS = args.warmup
+    elif preset.warmup_epochs is not None:
+        WARMUP_EPOCHS = preset.warmup_epochs
+    else:
+        WARMUP_EPOCHS = config.WARMUP_EPOCHS
     LR = args.lr or config.LR
     BATCH_SIZE = args.batch_size or config.BATCH_SIZE
     ACCUM_STEPS = args.accum_steps or config.ACCUM_STEPS
