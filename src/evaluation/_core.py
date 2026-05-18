@@ -48,6 +48,10 @@ ET_TAU = 0.5             # ET probability threshold (0.5 = argmax behaviour)
 # label-space only — no extra inference, just postprocess + Dice per grid pt.
 VMIN_SWEEP_ET = (500, 750, 1000, 1500, 2000)
 VMIN_SWEEP_TC = (0, 250, 500, 1000, 1500)
+# Joint sweep also varies the ET probability threshold. ET_TAU (0.5) is kept
+# in the grid so the legacy (tau=0.5) operating point stays comparable.
+# 3 points (dropped the 0.40 extreme) ≈ 25% less sweep cost per eval.
+VMIN_SWEEP_TAU = (0.45, 0.50, 0.55)
 
 
 # ----------------------------------------------------------------------
@@ -455,12 +459,13 @@ def run_evaluation(args, arch, model, ckpt, output_mode, results_base_dir):
     # V_min sweep: per-case Dice grid for (et_vmin, tc_vmin). Resumable.
     sweep_rows = []
     sweep_csv = os.path.join(out_dir, "vmin_sweep_per_case.csv")
-    sweep_done = set()  # (pid, mode, et_v, tc_v) tuples already computed
+    sweep_done = set()  # (pid, mode, tau_et, et_v, tc_v) tuples already computed
     if do_sweep and os.path.exists(sweep_csv):
         df_sw = pd.read_csv(sweep_csv)
         sweep_rows = df_sw.to_dict("records")
         for r in sweep_rows:
             sweep_done.add((str(r["patient_id"]), r["mode"],
+                            round(float(r.get("tau_et", ET_TAU)), 3),
                             int(r["et_vmin"]), int(r["tc_vmin"])))
 
     rng = np.random.RandomState(0)
@@ -522,19 +527,21 @@ def run_evaluation(args, arch, model, ckpt, output_mode, results_base_dir):
                 per_case.append(dict(patient_id=pid, mode=f"{mode_name}_post", **m_pp))
 
                 if do_sweep:
-                    for ev in VMIN_SWEEP_ET:
-                        for tv in VMIN_SWEEP_TC:
-                            key = (pid, mode_name, ev, tv)
-                            if key in sweep_done:
-                                continue
-                            pp = PP.postprocess_full(
-                                probs, tau_et=ET_TAU, et_vmin=ev, tc_vmin=tv,
-                            )
-                            mm = M.dice_only_metrics(pp, gt)
-                            sweep_rows.append({
-                                "patient_id": pid, "mode": mode_name,
-                                "et_vmin": ev, "tc_vmin": tv, **mm,
-                            })
+                    for tau in VMIN_SWEEP_TAU:
+                        for ev in VMIN_SWEEP_ET:
+                            for tv in VMIN_SWEEP_TC:
+                                key = (pid, mode_name, round(tau, 3), ev, tv)
+                                if key in sweep_done:
+                                    continue
+                                pp = PP.postprocess_full(
+                                    probs, tau_et=tau, et_vmin=ev, tc_vmin=tv,
+                                )
+                                mm = M.dice_only_metrics(pp, gt)
+                                sweep_rows.append({
+                                    "patient_id": pid, "mode": mode_name,
+                                    "tau_et": tau, "et_vmin": ev,
+                                    "tc_vmin": tv, **mm,
+                                })
 
             for region in M.REGIONS:
                 pr = M.probs_to_region_probs(probs)[region]
@@ -692,19 +699,21 @@ def run_evaluation(args, arch, model, ckpt, output_mode, results_base_dir):
             per_case.append(dict(patient_id=pid, mode="temperature_scale_post", **m_pp))
 
             if do_sweep:
-                for ev in VMIN_SWEEP_ET:
-                    for tv in VMIN_SWEEP_TC:
-                        key = (pid, "temperature_scale", ev, tv)
-                        if key in sweep_done:
-                            continue
-                        pp = PP.postprocess_full(
-                            probs, tau_et=ET_TAU, et_vmin=ev, tc_vmin=tv,
-                        )
-                        mm = M.dice_only_metrics(pp, gt)
-                        sweep_rows.append({
-                            "patient_id": pid, "mode": "temperature_scale",
-                            "et_vmin": ev, "tc_vmin": tv, **mm,
-                        })
+                for tau in VMIN_SWEEP_TAU:
+                    for ev in VMIN_SWEEP_ET:
+                        for tv in VMIN_SWEEP_TC:
+                            key = (pid, "temperature_scale", round(tau, 3), ev, tv)
+                            if key in sweep_done:
+                                continue
+                            pp = PP.postprocess_full(
+                                probs, tau_et=tau, et_vmin=ev, tc_vmin=tv,
+                            )
+                            mm = M.dice_only_metrics(pp, gt)
+                            sweep_rows.append({
+                                "patient_id": pid, "mode": "temperature_scale",
+                                "tau_et": tau, "et_vmin": ev,
+                                "tc_vmin": tv, **mm,
+                            })
             # Reload brain foreground for this case (image[4] is the binary FG channel)
             fg_ts = np.load(
                 os.path.join(config.TRAIN_DATA_PATH, pid, "image.npy"), mmap_mode="r",
@@ -888,7 +897,9 @@ def run_evaluation(args, arch, model, ckpt, output_mode, results_base_dir):
     if do_sweep and sweep_rows:
         df_sw = pd.DataFrame(sweep_rows)
         df_sw.to_csv(sweep_csv, index=False)
-        agg = df_sw.groupby(["mode", "et_vmin", "tc_vmin"]).agg(
+        if "tau_et" not in df_sw.columns:
+            df_sw["tau_et"] = ET_TAU
+        agg = df_sw.groupby(["mode", "tau_et", "et_vmin", "tc_vmin"]).agg(
             dice_ET=("dice_ET", "mean"),
             dice_TC=("dice_TC", "mean"),
             dice_WT=("dice_WT", "mean"),

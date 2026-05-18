@@ -134,6 +134,29 @@ VARIANTS: Dict[str, VariantSpec] = {
         "softmax", "transformer",
     ),
 
+    # ---- Lean variant — data-driven debloat of `full` ------------------------
+    # The full ablation chain never beats plain base_cnn on TC; freq/uncertainty
+    # are TC-poison and boundary only patches what uncertainty broke. full_lean
+    # keeps only the proven winners (spectral_swin + Phase-6 arch) plus the
+    # monotonic prerequisite (modality_stems + cross_modal), drops freq /
+    # uncertainty / boundary, and adds a dedicated TC-Refine pathway. Trained
+    # once with TC-weighted loss + heavier spatial aug to beat the unet3d
+    # baseline on mean Dice. decoder_dropout_final=0.05 kept so MC-Dropout
+    # still provides a training-free uncertainty signal at eval.
+    "full_lean": (
+        TransResUNet3D,
+        dict(in_channels=5, num_classes=4, base_filters=32,
+             use_modality_stems=True, use_cross_modal=True,
+             use_spectral_swin=True,
+             spectral_blocks_per_stage=4,
+             encoder_extra_depth=True,
+             use_multiscale_fusion_head=True,
+             use_tc_refine=True,
+             decoder_dropout_final=0.05,
+             output_mode="softmax"),
+        "softmax", "transformer",
+    ),
+
     # ---- Efficient variant (Phase 6b — pruned/distilled from `full`) ---------
     "full_efficient":   (_not_implemented("full_efficient"),   {}, "softmax", "transformer"),
 
@@ -174,6 +197,7 @@ VARIANTS: Dict[str, VariantSpec] = {
 # AURAS = All-modality, Uncertainty-aware, Residual, Aggregation, Spectral.
 DISPLAY_NAMES: Dict[str, str] = {
     "full":          "AURAS",
+    "full_lean":     "AURAS",
     "boundary":      "AURAS-B",
     "uncertainty":   "AURAS-U",
     "spectral_swin": "AURAS-S",

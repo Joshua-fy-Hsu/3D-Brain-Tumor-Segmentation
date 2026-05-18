@@ -38,6 +38,7 @@ from model.blocks.spectral_swin import SpectralSwinStage
 from model.blocks.uncertainty_bottleneck import UncertaintyBottleneck
 from model.blocks.boundary_head import BoundaryHead
 from model.blocks.multiscale_fusion import MultiScaleFusionHead
+from model.blocks.tc_refine_head import TCRefineHead
 
 
 class TransResUNet3D(nn.Module):
@@ -66,6 +67,7 @@ class TransResUNet3D(nn.Module):
         spectral_blocks_per_stage: int = 2,
         encoder_extra_depth: bool = False,
         use_multiscale_fusion_head: bool = False,
+        use_tc_refine: bool = False,       # full_lean — dedicated TC pathway
         output_mode: str = "softmax",
         decoder_dropout_inner: float = 0.0,
         decoder_dropout_final: float = 0.0,
@@ -95,6 +97,16 @@ class TransResUNet3D(nn.Module):
             )
         if spectral_blocks_per_stage < 1:
             raise ValueError(f"spectral_blocks_per_stage must be >=1, got {spectral_blocks_per_stage}")
+        if use_tc_refine and not use_multiscale_fusion_head:
+            raise ValueError(
+                "use_tc_refine=True requires use_multiscale_fusion_head=True "
+                "(the TC residual is fused into the fusion-head logits)."
+            )
+        if use_tc_refine and output_mode != "softmax":
+            raise ValueError(
+                "use_tc_refine=True is only defined for output_mode='softmax' "
+                "(it gates the NCR/ET softmax channels)."
+            )
 
         self.in_channels = in_channels
         self.num_classes = num_classes
@@ -108,7 +120,8 @@ class TransResUNet3D(nn.Module):
         self.spectral_blocks_per_stage = spectral_blocks_per_stage
         self.encoder_extra_depth = encoder_extra_depth
         self.use_multiscale_fusion_head = use_multiscale_fusion_head
-        self._aux_heads_active = bool(use_uncertainty or use_boundary)
+        self.use_tc_refine = use_tc_refine
+        self._aux_heads_active = bool(use_uncertainty or use_boundary or use_tc_refine)
 
         head_channels = num_classes if output_mode == "softmax" else 3
 
@@ -231,6 +244,15 @@ class TransResUNet3D(nn.Module):
             self.boundary_head_2 = None
             self.boundary_head_3 = None
 
+        # ---- full_lean — dedicated TC-Refine pathway ----
+        # head1 reads d1 (full-res, base_filters), head2 reads d2 (1/2-res,
+        # base_filters*2). The full-res TC logit is fused as a gated residual
+        # into the fusion-head softmax logits (NCR/ET channels only).
+        if use_tc_refine:
+            self.tc_refine = TCRefineHead(base_filters, base_filters * 2)
+        else:
+            self.tc_refine = None
+
         # Optional decoder dropout (kept here for parity with model_transformer.py;
         # zero by default for cnn-family variants).
         self.dropout_inner = nn.Dropout3d(p=decoder_dropout_inner) if decoder_dropout_inner > 0 else nn.Identity()
@@ -336,11 +358,34 @@ class TransResUNet3D(nn.Module):
         else:
             out_final = self.final_conv(d1)
 
+        # full_lean — gated TC residual fused into the final softmax logits
+        # (NCR/ET channels only). tc1/tc2 are also surfaced for the deep-
+        # supervised TC loss. gate init 0 → identical to the no-TC config.
+        tc1 = tc2 = None
+        if self.tc_refine is not None:
+            tc1 = self.tc_refine.head1(d1)
+            tc2 = self.tc_refine.head2(d2)
+            out_final = self.tc_refine.fuse(out_final, tc1)
+
         # Backwards-compatible: variants without auxiliary heads still return a
         # tuple/tensor so existing trainer/evaluator paths are unchanged.
         if not self._aux_heads_active:
             if self.training:
                 return out_final, out_ds1, out_ds2
+            return out_final
+
+        # TC-refine-only config (no uncertainty/boundary): at eval the TC
+        # residual is already folded into out_final, so return the plain
+        # legacy tensor — evaluate_variant.py / _core.py need no change.
+        # Training surfaces tc=(tc1, tc2) for the deep-supervised TC loss.
+        if self.use_tc_refine and not (self.use_uncertainty or self.use_boundary):
+            if self.training:
+                return {
+                    "seg": (out_final, out_ds1, out_ds2),
+                    "variance": None,
+                    "boundary": None,
+                    "tc": (tc1, tc2),
+                }
             return out_final
 
         # Auxiliary heads enabled → dict output. Trainer/evaluator extract

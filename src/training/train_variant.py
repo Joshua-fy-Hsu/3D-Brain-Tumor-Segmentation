@@ -51,6 +51,7 @@ from training.losses import (
     RegionWiseDiceFocalSigmoidLoss,
     UncertaintyAwareLoss,
     BoundaryAwareLoss,
+    TCRefineLoss,
 )
 
 
@@ -91,6 +92,11 @@ class TrainingPreset:
     lambda_boundary_ramp_epochs: int = 50
     boundary_bce_weight: float = 0.3
     boundary_edge_dice_weight: float = 0.2
+    # full_lean — TC-Refine deep-supervised loss + TC-weighted region loss.
+    use_tc_refine_loss: bool = False
+    tc_region_weights: tuple = (1.0, 1.0, 1.0)   # (WT, TC, ET) on the seg loss
+    tc_refine_ds_weights: tuple = (1.0, 0.5)     # (full-res, 1/2-res) TC head
+    tc_gate_warmup_epochs: int = 20              # gate/tc params at 0.1xLR first
     # Phase 6 — top-K snapshot saving for the snapshot-ensemble eval recipe.
     # top_k_snapshots=1 (default) preserves the legacy single-best behaviour.
     # snapshot_min_gap enforces a minimum epoch distance between saved
@@ -179,6 +185,28 @@ def full_preset() -> TrainingPreset:
     return p
 
 
+def full_lean_preset() -> TrainingPreset:
+    """Data-driven debloat of `full` — single run to beat the unet3d baseline.
+
+    Same transformer/bf16 recipe as spectral_swin (the proven-useful core),
+    but: no uncertainty/boundary loss wrappers (their heads are dropped in
+    the registry kwargs), TC region up-weighted ×1.8 in the seg loss, and a
+    deep-supervised TC-Refine head loss. Single best model (no snapshot
+    ensemble — top_k=1). The TC-Refine gate + conv params train at 0.1×LR
+    for the first `tc_gate_warmup_epochs` so the residual eases in instead
+    of disrupting the ET/WT regions AURAS already wins/ties.
+    """
+    p = spectral_swin_preset()                   # bf16, transformer recipe
+    p.use_uncertainty_loss = False
+    p.use_boundary_loss = False
+    p.use_tc_refine_loss = True
+    p.tc_region_weights = (1.0, 1.8, 1.0)        # (WT, TC, ET)
+    p.tc_refine_ds_weights = (1.0, 0.5)
+    p.tc_gate_warmup_epochs = 20
+    p.top_k_snapshots = 1                        # no ensemble
+    return p
+
+
 # Map variant name -> preset factory. New variants register here.
 TRAINING_PRESETS = {
     "base_cnn":            base_cnn_preset,
@@ -187,6 +215,7 @@ TRAINING_PRESETS = {
     "uncertainty":         uncertainty_preset,
     "boundary":            boundary_preset,
     "full":                full_preset,
+    "full_lean":           full_lean_preset,
     # Phase 1+ variants will be added as they're implemented. Default for any
     # missing variant is the transformer preset (the more featureful one).
 }
@@ -331,18 +360,18 @@ class ModelEMA:
 # Dice helpers (matches train_transformer.py val loop)
 # ---------------------------------------------------------------------------
 def _split_model_output(out):
-    """Normalize a model forward output into (seg, variance, boundary).
+    """Normalize a model forward output into (seg, variance, boundary, tc).
 
-    `seg` is the original tuple/tensor the seg loss expects. `variance` and
-    `boundary` are auxiliary tensors (or None) emitted only when the model
-    has the matching aux head enabled. Existing variants (base_cnn,
+    `seg` is the original tuple/tensor the seg loss expects. `variance`,
+    `boundary` and `tc` are auxiliary tensors (or None) emitted only when the
+    model has the matching aux head enabled. Existing variants (base_cnn,
     cross_modal, frequency, spectral_swin, current_transformer) return
-    tuples/tensors → variance/boundary are None and the loss path is
-    unchanged.
+    tuples/tensors → aux fields are None and the loss path is unchanged.
     """
     if isinstance(out, dict):
-        return out.get("seg"), out.get("variance"), out.get("boundary")
-    return out, None, None
+        return (out.get("seg"), out.get("variance"),
+                out.get("boundary"), out.get("tc"))
+    return out, None, None, None
 
 
 def _dice_per_region(pred_labels, target_labels, smooth=1e-5):
@@ -385,13 +414,15 @@ def train_one_epoch(model, loader, optimizer, scaler, criterion, device,
 
         with torch.amp.autocast("cuda", dtype=autocast_dtype):
             outputs = model(data)
-            seg_out, variance, boundary = _split_model_output(outputs)
+            seg_out, variance, boundary, tc = _split_model_output(outputs)
             if isinstance(criterion, BoundaryAwareLoss):
                 loss = criterion(
                     seg_out, targets, variance=variance, boundary=boundary
                 ) / accum_steps
             elif isinstance(criterion, UncertaintyAwareLoss):
                 loss = criterion(seg_out, targets, variance=variance) / accum_steps
+            elif isinstance(criterion, TCRefineLoss):
+                loss = criterion(seg_out, targets, tc=tc) / accum_steps
             else:
                 loss = criterion(seg_out, targets) / accum_steps
 
@@ -439,7 +470,7 @@ def validate_one_epoch(model, loader, criterion, device, preset: TrainingPreset)
 
             with torch.amp.autocast("cuda", dtype=autocast_dtype):
                 predictions = model(data)
-                seg_pred, _var, _bnd = _split_model_output(predictions)
+                seg_pred, _var, _bnd, _tc = _split_model_output(predictions)
                 # In eval mode the model returns the final-resolution tensor
                 # for the auxiliary-head-on case (dict["seg"] is a tensor).
                 # For the legacy tuple case it's also a tensor (model.eval()
@@ -497,6 +528,9 @@ def parse_args():
                     help="Override preset.top_k_snapshots. Trainer saves the K "
                          "highest-val-Dice EMA-weighted snapshots (with min-gap "
                          "spacing) as snapshot_top{1..K}.pth for ensemble eval.")
+    ap.add_argument("--tc-warmup", type=int, default=None,
+                    help="Override preset.tc_gate_warmup_epochs (full_lean): "
+                         "epochs the TC-Refine params train at 0.1x LR.")
     return ap.parse_args()
 
 
@@ -519,6 +553,8 @@ def main():
     if args.amp_dtype:     preset.amp_dtype = args.amp_dtype
     if args.top_k is not None:
         preset.top_k_snapshots = max(1, int(args.top_k))
+    if args.tc_warmup is not None:
+        preset.tc_gate_warmup_epochs = max(0, int(args.tc_warmup))
 
     # Hyperparams (CLI > config)
     DEVICE = config.DEVICE
@@ -584,21 +620,43 @@ def main():
     # parameter_groups() may exist on the model but return an empty
     # transformer list (e.g. cross_modal / frequency don't have a transformer
     # stage). Skip the split in that case — AdamW dislikes empty param groups.
+    # full_lean — carve the TC-Refine params into their own group so their LR
+    # can be warmed up independently (gate eases the residual in instead of
+    # disrupting the ET/WT regions AURAS already wins/ties).
+    tc_module = getattr(model, "tc_refine", None)
+    tc_params = list(tc_module.parameters()) if tc_module is not None else []
+    tc_ids = {id(p) for p in tc_params}
+    tc_group_idx = None
+
     use_split = preset.use_param_groups and hasattr(model, "parameter_groups")
     if use_split:
         cnn_params, transformer_params = model.parameter_groups()
         use_split = len(transformer_params) > 0
 
     if use_split:
+        cnn_params = [p for p in cnn_params if id(p) not in tc_ids]
+        transformer_params = [p for p in transformer_params if id(p) not in tc_ids]
+        groups = [
+            {"params": cnn_params, "lr": LR},
+            {"params": transformer_params, "lr": LR},
+        ]
+        if tc_params:
+            groups.append({"params": tc_params, "lr": LR})
+            tc_group_idx = len(groups) - 1
+        optimizer = optim.AdamW(groups, lr=LR, weight_decay=config.WEIGHT_DECAY)
+        print(f"[opt] split groups: cnn={sum(p.numel() for p in cnn_params):,}  "
+              f"transformer={sum(p.numel() for p in transformer_params):,}"
+              + (f"  tc_refine={sum(p.numel() for p in tc_params):,}"
+                 if tc_params else ""))
+    elif tc_params:
+        other = [p for p in model.parameters() if id(p) not in tc_ids]
         optimizer = optim.AdamW(
-            [
-                {"params": cnn_params, "lr": LR},
-                {"params": transformer_params, "lr": LR},
-            ],
+            [{"params": other, "lr": LR}, {"params": tc_params, "lr": LR}],
             lr=LR, weight_decay=config.WEIGHT_DECAY,
         )
-        print(f"[opt] split groups: cnn={sum(p.numel() for p in cnn_params):,}  "
-              f"transformer={sum(p.numel() for p in transformer_params):,}")
+        tc_group_idx = 1
+        print(f"[opt] single group + tc_refine group "
+              f"({sum(p.numel() for p in tc_params):,} params)")
     else:
         optimizer = optim.AdamW(model.parameters(), lr=LR,
                                 weight_decay=config.WEIGHT_DECAY)
@@ -610,6 +668,7 @@ def main():
             gamma=2.0,
             ce_weight=preset.ce_weight,
             class_weights=preset.class_weights,
+            region_weights=preset.tc_region_weights,
         )
     else:
         seg_criterion = RegionWiseDiceFocalSigmoidLoss(gamma=2.0)
@@ -641,6 +700,14 @@ def main():
               f"bce_w={preset.boundary_bce_weight} edge_dice_w={preset.boundary_edge_dice_weight})")
     else:
         criterion = unc_criterion
+
+    if preset.use_tc_refine_loss:
+        criterion = TCRefineLoss(
+            base_loss=criterion,
+            ds_weights=preset.tc_refine_ds_weights,
+        )
+        print(f"[loss] TCRefineLoss(ds_weights={preset.tc_refine_ds_weights}, "
+              f"region_weights={preset.tc_region_weights})")
 
     scaler = torch.amp.GradScaler("cuda") if preset.amp_dtype == "fp16" else None
     ema = ModelEMA(model, decay=preset.ema_decay) if preset.use_ema else None
@@ -685,6 +752,13 @@ def main():
 
     for epoch in range(NUM_EPOCHS):
         current_lr = scheduler.get_last_lr()[0]
+        # full_lean — gate warmup: TC-Refine params at 0.1× the scheduled LR
+        # for the first tc_gate_warmup_epochs. Reapplied each epoch because
+        # scheduler.step() recomputes every group's LR from its base.
+        if tc_group_idx is not None and epoch < preset.tc_gate_warmup_epochs:
+            optimizer.param_groups[tc_group_idx]["lr"] = current_lr * 0.1
+            print(f"[tc-warmup] epoch {epoch+1} <= {preset.tc_gate_warmup_epochs}"
+                  f": tc_refine LR = {current_lr * 0.1:.2e} (0.1x)")
         # Phase 5: linear warm-up of λ_b across the first `ramp_epochs` epochs.
         if isinstance(criterion, BoundaryAwareLoss):
             new_lambda = criterion.lambda_at_epoch(epoch)

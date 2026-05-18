@@ -51,9 +51,12 @@ def summarize(eval_dir: str) -> None:
         if cur_et is not None:
             print(f"current run used: et_vmin={cur_et}  tc_vmin={cur_tc}")
 
+    if "tau_et" not in df.columns:
+        df["tau_et"] = 0.5
     best = df.loc[df.groupby("mode")["dice_mean"].idxmax()].sort_values("mode")
-    print("\nBest (et_vmin, tc_vmin) per mode by mean Dice:")
-    cols = ["mode", "et_vmin", "tc_vmin", "dice_ET", "dice_TC", "dice_WT", "dice_mean"]
+    print("\nBest (tau_et, et_vmin, tc_vmin) per mode by mean Dice:")
+    cols = ["mode", "tau_et", "et_vmin", "tc_vmin",
+            "dice_ET", "dice_TC", "dice_WT", "dice_mean"]
     pd.options.display.float_format = "{:.4f}".format
     print(best[cols].to_string(index=False))
 
