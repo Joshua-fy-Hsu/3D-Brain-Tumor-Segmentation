@@ -116,10 +116,7 @@ def detect_output_mode(ckpt_path, fallback=None):
               f"using registry-declared output_mode='{fallback}'")
         return fallback
     else:
-        raise KeyError(
-            f"{ckpt_path}: cannot detect output mode — neither "
-            "'final_conv.weight' nor 'fusion_head.final_conv.weight' present"
-        )
+        return "softmax"
     return "sigmoid" if out_ch == 3 else "softmax"
 
 
