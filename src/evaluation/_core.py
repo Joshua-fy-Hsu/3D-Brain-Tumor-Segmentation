@@ -46,25 +46,11 @@ ET_TAU = 0.5             # ET probability threshold (0.5 = argmax behaviour)
 
 # V_min sweep grid (used when --vmin-sweep is set). Cheap because it's
 # label-space only — no extra inference, just postprocess + Dice per grid pt.
-# Widened 2026-05-19: the old ET grid floored at 500 but unet3d's optimum
-# already sat at that 500 floor, so the true optimum was very likely below
-# it and unsearchable. Now spans 0..2000 (incl. sub-500) + finer TC + a
-# wider TAU. The fixed-default operating point (ET_VMIN_DEFAULT=1000,
-# TC_VMIN_DEFAULT=0, ET_TAU=0.5) is unchanged — it stays the clean
-# apples-to-apples claim; the sweep only reports headroom. ANY model
-# compared via the tuned number MUST be (re-)evaluated with THIS exact grid.
-#
-# 2026-05-19 (2): the first widening (9x7x5=315) blew per-case eval to ~677s
-# / 47h — the sweep is NOT free as first assumed: every tc_vmin>0 grid point
-# runs scipy ndimage.label on a ~240^3 volume, and it scales ~linearly with
-# the combo count x swept modes. Trimmed to 6x3x3=54 (leaner than the
-# original 75) while still covering the sub-500 ET region that was the whole
-# point of widening. ETA ~8h. Same symmetry rule: any tuned comparison must
-# re-evaluate BOTH models with THIS exact grid.
-VMIN_SWEEP_ET = (0, 100, 250, 500, 1000, 2000)
-VMIN_SWEEP_TC = (0, 250, 500)
+VMIN_SWEEP_ET = (500, 750, 1000, 1500, 2000)
+VMIN_SWEEP_TC = (0, 250, 500, 1000, 1500)
 # Joint sweep also varies the ET probability threshold. ET_TAU (0.5) is kept
 # in the grid so the legacy (tau=0.5) operating point stays comparable.
+# 3 points (dropped the 0.40 extreme) ≈ 25% less sweep cost per eval.
 VMIN_SWEEP_TAU = (0.45, 0.50, 0.55)
 
 
