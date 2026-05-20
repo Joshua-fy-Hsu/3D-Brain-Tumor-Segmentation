@@ -219,9 +219,14 @@ VARIANTS: Dict[str, VariantSpec] = {
 # `full` keeps the legacy AURAS name (the bloated predecessor: All-modality,
 # Uncertainty-aware, Residual, Aggregation, Spectral); the ablation rows are
 # the AURAS family.
+#
+# `hybrid` -> AURA: the clean-slate CNN+Transformer built standalone (not part
+# of the AURAS ablation chain) to beat the unet3d baseline. Bare brand name —
+# no forced backronym; report/figures explain the architecture in prose.
 DISPLAY_NAMES: Dict[str, str] = {
     "full":          "AURAS",
     "full_lean":     "ATLAS",
+    "hybrid":        "AURA",
     "boundary":      "AURAS-B",
     "uncertainty":   "AURAS-U",
     "spectral_swin": "AURAS-S",
