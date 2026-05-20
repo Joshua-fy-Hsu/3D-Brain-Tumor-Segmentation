@@ -18,7 +18,7 @@ FC, EC = "#eaf0f8", "#3b6fb5"
 STAGES = [
     ("Raw MRI", "Four MRI views", "T1 · T1CE · T2 · FLAIR"),
     ("Preprocess", "Standardize & focus", "5-channel · 128³ patches"),
-    ("AURAS model", "One configurable net", "CNN + transformer"),
+    ("AURA model", "One configurable net", "CNN + transformer"),
     ("Training", "Stable optimization", "EMA · mixed precision"),
     ("Evaluation", "Validated accuracy", "Dice / HD95 · paired stats"),
     ("Web App", "Deployed tool", "upload → segment → report"),
