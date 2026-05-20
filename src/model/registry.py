@@ -224,7 +224,7 @@ VARIANTS: Dict[str, VariantSpec] = {
 # of the AURAS ablation chain) to beat the unet3d baseline. Bare brand name —
 # no forced backronym; report/figures explain the architecture in prose.
 DISPLAY_NAMES: Dict[str, str] = {
-    "full":          "AURAS",
+    "full":          "Complex",
     "full_lean":     "ATLAS",
     "hybrid":        "AURA",
     "boundary":      "AURAS-B",
