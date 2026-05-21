@@ -17,7 +17,7 @@ DONE_FC, DONE_EC = "#e3f1e6", "#2f9e4f"
 NEXT_FC, NEXT_EC = "#eef2f7", "#94a3b8"
 
 DONE = [
-    ("Integrated", "AURAS built up\ncomponent-by-component"),
+    ("Integrated", "AURA built up\ncomponent-by-component"),
     ("Validated", "paired tests,\none BraTS cohort"),
     ("Deployed", "live browser\nworkstation"),
 ]

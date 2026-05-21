@@ -236,13 +236,13 @@ async function loadViewers(resp) {
   // BraTS label colormap (maximally distinct hues — yellow vs blue are
   // complementary so ED and ET never blend on the 3D render):
   //   0 = background (transparent)
-  //   1 = NCR  → red     rgb(239, 68, 68)
-  //   2 = ED   → yellow  rgb(250,204, 21)
-  //   3 = ET   → blue    rgb( 59,130,246)
+  //   1 = NCR  → red    rgb(239, 68, 68)
+  //   2 = ED   → green  rgb( 34,197, 94)
+  //   3 = ET   → blue   rgb( 29, 78,216)
   const labelColormap = {
-    R: [0, 239, 250, 59],
-    G: [0, 68, 204, 130],
-    B: [0, 68, 21, 246],
+    R: [0, 239, 34, 29],
+    G: [0, 68, 197, 78],
+    B: [0, 68, 94, 216],
     A: [0, 255, 255, 255],
     I: [0, 1, 2, 3],
     labels: ["BG", "NCR", "ED", "ET"],

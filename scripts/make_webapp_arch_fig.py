@@ -18,7 +18,7 @@ FC, EC = "#eaf0f8", "#3b6fb5"
 STAGES = [
     ("Browser UI", "Upload & explore in 3D", "Niivue viewer"),
     ("FastAPI backend", "Orchestrates each case", "preprocess → infer"),
-    ("AURAS model", "Segments + flags uncertainty", "4 regions + confidence"),
+    ("AURA model", "Segments + flags uncertainty", "4 regions + confidence"),
     ("Result", "Clinical-ready output", "volumes · report ZIP"),
 ]
 

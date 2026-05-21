@@ -21,7 +21,7 @@
     </div>
     <div class="brand-text">
       <h1>Brain Tumor Segmentation</h1>
-      <p>Clinical-style MRI workstation · All-modality Uncertainty-aware Residual Architecture with Spectral-processing</p>
+      <p>Clinical-style MRI workstation · Attention · U-Net · Residual · All-modality</p>
     </div>
   </div>
   <div class="model-badge" id="model-badge">Model: loading…</div>
@@ -88,7 +88,7 @@
       </label>
       <div class="legend">
         <div class="legend-item"><span class="sw ncr"></span><span>Necrotic Core (NCR) — red</span></div>
-        <div class="legend-item"><span class="sw ed"></span><span>Edema / swelling (ED) — yellow</span></div>
+        <div class="legend-item"><span class="sw ed"></span><span>Edema / swelling (ED) — green</span></div>
         <div class="legend-item"><span class="sw et"></span><span>Enhancing Tumor (ET) — blue</span></div>
       </div>
       <p class="panel-hint" style="margin-top:10px">NCR is the inner dead-tissue core — it sits <em>inside</em> ET/ED, so it is mostly hidden in the 3D render but visible in the slice viewer.</p>
@@ -245,6 +245,11 @@
       <div class="section-head">
         <h2>3D &amp; Slice Visualisation</h2>
         <p>Drag to rotate the 3D render, scroll to zoom. The slice viewer keeps the three orthogonal planes in sync — click anywhere to move the crosshair.</p>
+        <div class="viewer-legend">
+          <span class="vl-item"><span class="vl-sw ncr"></span>NCR</span>
+          <span class="vl-item"><span class="vl-sw ed"></span>ED</span>
+          <span class="vl-item"><span class="vl-sw et"></span>ET</span>
+        </div>
       </div>
       <div class="viewers">
         <div class="viewer-card">

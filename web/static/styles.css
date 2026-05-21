@@ -136,8 +136,15 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
 .sw { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
 .sw.ncr { background: #ef4444; }
-.sw.ed  { background: #facc15; }
-.sw.et  { background: #3b82f6; }
+.sw.ed  { background: #22c55e; }
+.sw.et  { background: #1d4ed8; }
+
+.viewer-legend { display: flex; gap: 16px; margin-top: 8px; }
+.vl-item { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.vl-sw { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+.vl-sw.ncr { background: #ef4444; }
+.vl-sw.ed  { background: #22c55e; }
+.vl-sw.et  { background: #1d4ed8; }
 
 /* ───── Content / hero ───── */
 .hero { margin-bottom: 20px; }
