@@ -1,7 +1,7 @@
 """Inference wrapper: pinned model load + one-shot SW-predict → labels + region probs.
 
 Reuses existing primitives:
-  - build_variant("full")                 from src.model.registry
+  - build_variant("hybrid")               from src.model.registry
   - find_latest_checkpoint                from src.evaluation._core
   - wrap_for_eval (DictToSegAdapter)      from src.evaluation._core
   - sw_predict / _logits_to_4ch_probs     from src.evaluation.uncertainty
@@ -31,14 +31,14 @@ from model.registry import (  # noqa: E402
     build_variant, get_arch_family, get_display_name, get_output_mode,
 )
 
-VARIANT_NAME = "full"
+VARIANT_NAME = "hybrid"
 ET_TAU = 0.5
 ET_VMIN = 1000
 
 # Product-facing identity. Resolved from the registry so the brand name
-# (AURAS) lives in exactly one place; the internal variant/run name is kept
+# lives in exactly one place; the internal variant/run name is kept
 # only for provenance inside metrics.json, never shown in the UI.
-MODEL_DISPLAY_NAME = get_display_name(VARIANT_NAME)  # "full" -> "AURAS"
+MODEL_DISPLAY_NAME = get_display_name(VARIANT_NAME)  # "hybrid" -> "AURA"
 MODEL_VERSION = "v1.0"
 
 
