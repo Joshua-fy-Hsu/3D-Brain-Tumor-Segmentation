@@ -267,6 +267,25 @@
           <canvas id="nvmpr-canvas"></canvas>
         </div>
       </div>
+
+      <!-- Uncertainty map — hidden until MC-Dropout finishes -->
+      <div id="uncertainty-section" class="uncertainty-section" style="display:none">
+        <div class="unc-header">
+          <div>
+            <h3 style="font-size:18px;font-weight:700">Predictive Uncertainty</h3>
+            <p class="panel-hint" style="margin:3px 0 0">MC Dropout (T=10) — predictive entropy per voxel. Bright = high uncertainty. Scroll to change slice.</p>
+          </div>
+          <span id="uncertainty-badge" class="unc-badge computing">Computing…</span>
+        </div>
+        <div class="viewer-card" style="margin-top:0">
+          <canvas id="nvunc-canvas"></canvas>
+          <div class="unc-colorbar">
+            <span class="unc-cb-label">Low</span>
+            <div class="unc-cb-gradient"></div>
+            <span class="unc-cb-label">High</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <footer class="pagefoot">
