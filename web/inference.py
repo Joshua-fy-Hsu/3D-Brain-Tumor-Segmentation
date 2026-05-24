@@ -120,3 +120,25 @@ def run(loaded: LoadedModel, x: torch.Tensor,
         labels = _C.decode_labels(probs, output_mode=loaded.output_mode)
 
     return InferenceResult(probs_4ch=probs, labels=labels)
+
+
+def run_uncertainty(loaded: LoadedModel, x: torch.Tensor,
+                    T: int = 10,
+                    roi: tuple[int, int, int] = (128, 128, 128),
+                    overlap: float = 0.5) -> Optional[np.ndarray]:
+    """Run T MC-Dropout forward passes and return predictive entropy map.
+
+    Returns a (D, H, W) float32 array, or None if the model has no dropout.
+    x must still be on loaded.device.
+    """
+    if not U.model_has_dropout(loaded.model):
+        return None
+    with torch.no_grad():
+        _, entropy, _ = U.mc_dropout_predict(
+            loaded.model, x, T=T, roi=roi, overlap=overlap,
+            output_mode=loaded.output_mode,
+        )
+    if entropy is None:
+        return None
+    # entropy shape: (1, 1, D, H, W) → (D, H, W)
+    return entropy[0, 0].detach().cpu().numpy().astype(np.float32)

@@ -1,7 +1,7 @@
 // Niivue loaded via ESM CDN (no build step). To vendor offline, save the
 // file at https://unpkg.com/@niivue/niivue/dist/index.js as
 // web/static/lib/niivue.esm.js and change the import below.
-import { Niivue, SLICE_TYPE } from "https://unpkg.com/@niivue/niivue/dist/index.js";
+import { Niivue, SLICE_TYPE, SHOW_RENDER } from "https://unpkg.com/@niivue/niivue/dist/index.js";
 
 const $ = (sel) => document.querySelector(sel);
 const fmt = (v, d = 2) => (v == null ? "—" : Number(v).toFixed(d));
@@ -23,8 +23,27 @@ const nvMPR = new Niivue({
 nvMPR.attachToCanvas($("#nvmpr-canvas"));
 nvMPR.setSliceType(SLICE_TYPE.MULTIPLANAR);
 
+// nvUnc created lazily (canvas is display:none at page load → 0×0 dimensions).
+let nvUnc = null;
+function getOrCreateNvUnc() {
+  if (nvUnc) return nvUnc;
+  nvUnc = new Niivue({ show3Dcrosshair: true, backColor: [0,0,0,1], isColorbar: false });
+  nvUnc.attachToCanvas($("#nvunc-canvas"));
+  nvUnc.setSliceType(SLICE_TYPE.MULTIPLANAR);
+  // Default auto-layout sizes each tile to the volume's physical extent, so the
+  // axial/coronal/sagittal panels come out different sizes on this wide canvas.
+  // Force equal-sized tiles and drop the (dark, near-empty) 3D render tile so
+  // the result is a clean, uniform row of the three planes.
+  nvUnc.opts.multiplanarEqualSize = true;
+  try { nvUnc.opts.multiplanarShowRender = SHOW_RENDER.NEVER; } catch (_) {}
+  // Force a single row of the three planes (0=auto,1=col,2=grid,3=row).
+  try { nvUnc.opts.multiplanarLayout = 3; } catch (_) {}
+  return nvUnc;
+}
+
 let lastResp = null;             // last /api/predict response
 let baseModality = "t1ce";
+let _uncPollTimer = null;        // setInterval handle for uncertainty polling
 
 // --- Meta -----------------------------------------------------------------
 fetch("/api/meta").then(r => r.json()).then(meta => {
@@ -132,6 +151,9 @@ $("#upload-form").addEventListener("submit", async (ev) => {
   $("#predict-btn").disabled = true;
   $("#status").classList.remove("error");
   $("#status").textContent = "Uploading and running inference (~30–60 s)...";
+  // Reset uncertainty panel from any previous run
+  if (_uncPollTimer) { clearInterval(_uncPollTimer); _uncPollTimer = null; }
+  $("#uncertainty-section").style.display = "none";
   try {
     const r = await fetch("/api/predict", { method: "POST", body: fd });
     if (!r.ok) {
@@ -225,6 +247,74 @@ async function renderResults(resp) {
   $("#download-btn").disabled = false;
 
   await loadViewers(resp);
+  startUncertaintyPoll(resp);
+}
+
+// --- Uncertainty polling -------------------------------------------------
+function startUncertaintyPoll(resp) {
+  if (_uncPollTimer) clearInterval(_uncPollTimer);
+  const statusUrl = resp.uncertainty_url;
+  if (!statusUrl) return;
+
+  // Show the section immediately with "Computing…" badge
+  const sec = $("#uncertainty-section");
+  const badge = $("#uncertainty-badge");
+  sec.style.display = "block";
+  badge.textContent = "Computing…";
+  badge.className = "unc-badge computing";
+
+  _uncPollTimer = setInterval(async () => {
+    try {
+      const r = await fetch(statusUrl);
+      const s = await r.json();
+      if (s.ready && s.url) {
+        clearInterval(_uncPollTimer);
+        _uncPollTimer = null;
+        badge.textContent = "Ready";
+        badge.className = "unc-badge ready";
+        await loadUncertaintyViewer(resp.nifti_urls[baseModality], s.url);
+      }
+    } catch (_) { /* ignore transient fetch errors */ }
+  }, 3000);
+}
+
+async function loadUncertaintyViewer(baseUrl, uncUrl) {
+  for (let i = 0; i < 40; i++) {
+    if ($("#nvunc-canvas").clientWidth > 0) break;
+    await new Promise(r => setTimeout(r, 50));
+  }
+  await new Promise(r => setTimeout(r, 50));
+  const nv = getOrCreateNvUnc();
+  await nv.loadVolumes([
+    { url: baseUrl, colormap: "gray",    opacity: 1.0 },
+    { url: uncUrl,  colormap: "inferno", opacity: 0.65, cal_min: 0 },
+  ]);
+  // The section starts display:none, so Niivue captured a stale/near-square
+  // draw buffer; the 3:1 montage then fits into a narrow centered strip. Wait
+  // for layout to settle, then re-run Niivue's own resize handler so the draw
+  // buffer matches the full (wide) canvas and the tiles fill it.
+  const CANVAS_H = 460; // displayed height in CSS px; tiles scale to fill it
+  const syncSize = () => {
+    const c = document.getElementById("nvunc-canvas");
+    if (c) {
+      const cssW = c.getBoundingClientRect().width || c.clientWidth;
+      if (cssW > 0) {
+        const dpr = window.devicePixelRatio || 1;
+        // Force display height (independent of any CSS) and match the draw
+        // buffer to the full width × height so the montage fills the canvas
+        // instead of scaling to a small centered region.
+        c.style.height = CANVAS_H + "px";
+        c.width = Math.round(cssW * dpr);
+        c.height = Math.round(CANVAS_H * dpr);
+      }
+    }
+    try { window.dispatchEvent(new Event("resize")); } catch (_) {}
+    try { nv.resizeListener(); } catch (_) {}
+    try { nv.drawScene(); } catch (_) {}
+  };
+  requestAnimationFrame(() => requestAnimationFrame(syncSize));
+  setTimeout(syncSize, 150);
+  setTimeout(syncSize, 400);
 }
 
 // --- Niivue --------------------------------------------------------------

@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import sys
+import threading
 from typing import Annotated
 
 import nibabel as nib
@@ -186,6 +187,30 @@ async def predict(
     with open(os.path.join(sdir, "summary.txt"), "w", encoding="utf-8") as f:
         f.write(summary_text + "\n")
 
+    # Kick off MC-Dropout uncertainty in a background thread so the seg
+    # result is returned immediately. The frontend polls /uncertainty_status.
+    x_cpu = case.x.cpu()  # move off GPU before handing to thread
+    affine_copy = case.ref_affine.copy()
+
+    def _compute_uncertainty():
+        try:
+            x_dev = x_cpu.to(_loaded_model.device)
+            ent = I.run_uncertainty(_loaded_model, x_dev, T=10)
+            if ent is not None:
+                # Save as uncompressed .nii — avoids uvicorn re-gzipping an
+                # already-gzipped file (Content-Length mismatch / RuntimeError).
+                _save_nifti(ent, affine_copy,
+                            os.path.join(sdir, "uncertainty.nii"))
+                log.info(f"[{sid}] uncertainty map saved")
+        except Exception:
+            log.exception(f"[{sid}] uncertainty computation failed")
+        finally:
+            if x_dev.is_cuda:
+                del x_dev
+                torch.cuda.empty_cache()
+
+    threading.Thread(target=_compute_uncertainty, daemon=True).start()
+
     return JSONResponse({
         **metrics,
         "nifti_urls": {
@@ -195,6 +220,7 @@ async def predict(
             "flair": f"/api/session/{sid}/flair.nii.gz",
             "seg": f"/api/session/{sid}/seg.nii.gz",
         },
+        "uncertainty_url": f"/api/session/{sid}/uncertainty_status",
     })
 
 
@@ -237,6 +263,20 @@ def download_report(sid: str) -> Response:
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="report_{sid[:8]}.zip"'},
     )
+
+
+@app.get("/api/session/{sid}/uncertainty_status")
+def uncertainty_status(sid: str) -> JSONResponse:
+    """Returns whether the MC-Dropout uncertainty map is ready."""
+    sdir = S.session_path(sid)
+    if sdir is None:
+        raise HTTPException(404, "Session not found")
+    path = os.path.join(sdir, "uncertainty.nii")
+    ready = os.path.exists(path)
+    return JSONResponse({
+        "ready": ready,
+        "url": f"/api/session/{sid}/uncertainty.nii" if ready else None,
+    })
 
 
 # Catch-all session file route — declared LAST so it does not shadow the
