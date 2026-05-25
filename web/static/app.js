@@ -150,7 +150,7 @@ $("#upload-form").addEventListener("submit", async (ev) => {
   const fd = new FormData(form);
   $("#predict-btn").disabled = true;
   $("#status").classList.remove("error");
-  $("#status").textContent = "Uploading and running inference (~30–60 s)...";
+  $("#status").textContent = "Uploading and running inference (~10 s)...";
   // Reset uncertainty panel from any previous run
   if (_uncPollTimer) { clearInterval(_uncPollTimer); _uncPollTimer = null; }
   $("#uncertainty-section").style.display = "none";
