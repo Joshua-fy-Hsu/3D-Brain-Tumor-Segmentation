@@ -310,6 +310,19 @@ async function loadStats() {
 }
 loadStats();
 
+const _resetBtn = document.getElementById("reset-stats-btn");
+if (_resetBtn) {
+  _resetBtn.addEventListener("click", async () => {
+    if (!confirm("Reset all cumulative statistics to zero? This cannot be undone.")) return;
+    _resetBtn.disabled = true;
+    try {
+      await fetch("/api/stats/reset", { method: "POST" });
+      await loadStats();
+    } catch (_) { /* ignore */ }
+    finally { _resetBtn.disabled = false; }
+  });
+}
+
 // --- Uncertainty polling -------------------------------------------------
 function startUncertaintyPoll(resp) {
   if (_uncPollTimer) clearInterval(_uncPollTimer);

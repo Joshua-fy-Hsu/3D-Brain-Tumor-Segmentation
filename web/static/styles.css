@@ -334,6 +334,15 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .eco-val { font-size: 22px; font-weight: 700; color: #047857; line-height: 1.1; }
 .eco-lbl { font-size: 11px; color: var(--muted); letter-spacing: .01em; }
 .eco-stats-3 { grid-template-columns: repeat(3, 1fr); }
+.eco-col-head-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.eco-reset-btn {
+  font-size: 11px; font-weight: 600; color: var(--muted);
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 3px 11px; cursor: pointer;
+  letter-spacing: normal; text-transform: none; transition: all .15s;
+}
+.eco-reset-btn:hover { color: #b91c1c; border-color: #fecaca; background: #fef2f2; }
+.eco-reset-btn:disabled { opacity: .5; cursor: default; }
 .eco-hero {
   background: linear-gradient(135deg, #ecfdf5, #d1fae5);
   border: 1px solid #a7f3d0; border-radius: var(--radius-sm);
