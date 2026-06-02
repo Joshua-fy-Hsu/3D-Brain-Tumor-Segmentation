@@ -75,3 +75,11 @@ def record(energy_wh: float, co2_g: float, cost_twd: float,
 def snapshot() -> dict:
     with _lock:
         return _read_locked()
+
+
+def reset() -> dict:
+    """Zero the ledger (one-click reset for demos). Returns the cleared state."""
+    with _lock:
+        d = dict(_DEFAULT)
+        _write_locked(d)
+        return d

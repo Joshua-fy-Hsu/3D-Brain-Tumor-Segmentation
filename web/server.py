@@ -116,6 +116,13 @@ def stats() -> dict:
     return EN.usage_summary(USG.snapshot())
 
 
+@app.post("/api/stats/reset")
+def stats_reset() -> dict:
+    """One-click zeroing of the cumulative ledger (demo convenience)."""
+    log.info("cumulative usage ledger reset via /api/stats/reset")
+    return EN.usage_summary(USG.reset())
+
+
 def _save_nifti(arr: np.ndarray, affine: np.ndarray, path: str) -> None:
     nib.save(nib.Nifti1Image(arr, affine), path)
 
