@@ -460,24 +460,41 @@ $("#download-btn").addEventListener("click", async () => {
   if (!lastResp) return;
   const sid = lastResp.session_id;
   $("#status").classList.remove("error");
-  $("#status").textContent = "Bundling report...";
+  $("#status").textContent = "Building PDF report...";
   try {
-    // Best-effort screenshot — a blank/failed capture must NOT block the zip.
+    // Best-effort screenshot — a blank/failed capture must NOT block the PDF.
     try {
-      const blob = await canvasToBlob($("#nv3d-canvas"));
+      const blob = await canvasToBlob($("#nv3d-canvas"), nv3d);
       if (blob && blob.size > 0) {
         await fetch(`/api/session/${sid}/screenshot`, { method: "POST", body: blob });
       }
     } catch (e) { console.warn("screenshot skipped:", e); }
+    // Slice viewer capture.
+    try {
+      const blob = await canvasToBlob($("#nvmpr-canvas"), nvMPR);
+      if (blob && blob.size > 0) {
+        await fetch(`/api/session/${sid}/slices`, { method: "POST", body: blob });
+      }
+    } catch (e) { console.warn("slices skipped:", e); }
+    // Uncertainty viewer capture (only if MC-Dropout finished and rendered).
+    try {
+      if (nvUnc && $("#nvunc-canvas") && $("#nvunc-canvas").clientWidth > 0) {
+        const blob = await canvasToBlob($("#nvunc-canvas"), nvUnc);
+        if (blob && blob.size > 0) {
+          await fetch(`/api/session/${sid}/uncertainty_shot`, { method: "POST", body: blob });
+        }
+      }
+    } catch (e) { console.warn("uncertainty shot skipped:", e); }
 
-    // Fetch the zip as a blob and trigger a real download via an anchor.
+    // Fetch the PDF as a blob and trigger a real download via an anchor.
     const r = await fetch(`/api/session/${sid}/report`);
     if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
-    const zip = await r.blob();
-    const url = URL.createObjectURL(zip);
+    const pdf = await r.blob();
+    const url = URL.createObjectURL(pdf);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `report_${sid.slice(0, 8)}.zip`;
+    const pid = (lastResp.patient_id || sid.slice(0, 8)).replace(/[^A-Za-z0-9_.\-]/g, "_");
+    a.download = `Report_${pid}.pdf`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -490,11 +507,11 @@ $("#download-btn").addEventListener("click", async () => {
   }
 });
 
-function canvasToBlob(canvas) {
+function canvasToBlob(canvas, nv = nv3d) {
   return new Promise(resolve => {
     try {
       // Force a fresh frame so the WebGL buffer isn't empty at capture time.
-      try { nv3d.drawScene(); } catch (_) {}
+      try { nv.drawScene(); } catch (_) {}
       requestAnimationFrame(() => {
         try { canvas.toBlob(b => resolve(b), "image/png"); }
         catch { resolve(null); }
