@@ -19,30 +19,43 @@ HERO = ROOT / "docs" / "figures" / "conclusion_hero.png"
 dice_vals = [0.8299, 0.8456, 0.8489, 0.8417]
 labels    = ["100%\n(全部)", "90%", "80%", "70%"]
 
-# ── Load hero image and crop uncertainty panel (rightmost quarter) ───────────
+# ── Load hero image and crop the four panels ─────────────────────────────────
 hero = mpimg.imread(str(HERO))
 H, W = hero.shape[:2]
-top_skip = int(H * 0.22)      # skip suptitle AND "Uncertainty" panel header
+top_skip = int(H * 0.22)      # skip suptitle AND panel header text
 bottom_skip = int(H * 0.12)   # skip the NCR/ED/ET legend row
-unc_panel = hero[top_skip:H - bottom_skip, W*3//4:, :]
+# Four panels in the source image, each occupying a horizontal quarter.
+t1ce_panel = hero[top_skip:H - bottom_skip, :W//4, :]
+unc_panel  = hero[top_skip:H - bottom_skip, W*3//4:, :]
 
-# ── Figure: 2 columns ────────────────────────────────────────────────────────
-fig = plt.figure(figsize=(13, 4.8))
-gs  = gridspec.GridSpec(1, 2, figure=fig, wspace=0.10, width_ratios=[1.15, 1.3])
+# ── Figure: 3 columns ────────────────────────────────────────────────────────
+fig = plt.figure(figsize=(17, 4.8))
+gs  = gridspec.GridSpec(1, 3, figure=fig, wspace=0.12, width_ratios=[1.0, 1.0, 2.0])
 
-# Left — uncertainty image
+# Left — T1CE input image
 ax_l = fig.add_subplot(gs[0])
-ax_l.imshow(unc_panel)
-ax_l.set_title("不確定性熱圖 (BraTS2021_01418)", fontsize=14,
+ax_l.imshow(t1ce_panel)
+ax_l.set_title("T1CE (輸入影像)", fontsize=14,
                fontweight="bold", pad=8)
 ax_l.axis("off")
 ax_l.text(0.5, -0.05,
-          "高不確定性集中於腫瘤邊界與易錯區域",
+          "案例 BraTS2021_01418",
           ha="center", va="top", transform=ax_l.transAxes,
           fontsize=12, color="#1e293b", fontweight="bold")
 
+# Middle — uncertainty heatmap
+ax_m = fig.add_subplot(gs[1])
+ax_m.imshow(unc_panel)
+ax_m.set_title("不確定性熱圖", fontsize=14,
+               fontweight="bold", pad=8)
+ax_m.axis("off")
+ax_m.text(0.5, -0.05,
+          "高不確定性集中於腫瘤邊界與易錯區域",
+          ha="center", va="top", transform=ax_m.transAxes,
+          fontsize=12, color="#1e293b", fontweight="bold")
+
 # Right — selective prediction bar chart
-ax_r = fig.add_subplot(gs[1])
+ax_r = fig.add_subplot(gs[2])
 
 colors = ["#94a3b8", "#60a5fa", "#3b82f6", "#1d4ed8"]
 bars = ax_r.bar(labels, dice_vals, color=colors, edgecolor="none", width=0.55)
