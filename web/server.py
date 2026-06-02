@@ -35,7 +35,7 @@ from web import energy as EN
 from web import inference as I
 from web import metrics_case as MC
 from web import preprocess as P
-from web import report as RP
+from web import report_pdf as RPDF
 from web import risk as RK
 from web import state as S
 from web import summary as SUM
@@ -127,6 +127,28 @@ def _save_nifti(arr: np.ndarray, affine: np.ndarray, path: str) -> None:
     nib.save(nib.Nifti1Image(arr, affine), path)
 
 
+def _patient_id(orig_names: dict[str, str]) -> str:
+    """Derive a patient identifier from the uploaded filenames.
+
+    Strips the extension and any trailing modality token, e.g.
+    'BraTS2021_00495_t1ce.nii.gz' -> 'BraTS2021_00495'. Returns '' if nothing
+    meaningful remains (generic names like 't1ce.nii.gz').
+    """
+    import re
+    for key in ("t1ce", "flair", "t2", "t1"):
+        fn = orig_names.get(key) or ""
+        base = fn
+        for ext in (".nii.gz", ".nii"):
+            if base.lower().endswith(ext):
+                base = base[:-len(ext)]
+                break
+        base = re.sub(r"[_\- ]?(t1ce|t1c|t1|t2|flair|seg)$", "", base, flags=re.I)
+        base = base.strip(" _-")
+        if base and base.lower() not in ("t1ce", "t1c", "t1", "t2", "flair"):
+            return base
+    return ""
+
+
 @app.post("/api/predict")
 async def predict(
     t1: Annotated[UploadFile, File(...)],
@@ -139,6 +161,7 @@ async def predict(
 
     sid, sdir = S.new_session()
     uploads = {"t1": t1, "t1ce": t1ce, "t2": t2, "flair": flair}
+    orig_names = {name: (up.filename or "") for name, up in uploads.items()}
     saved_paths: dict[str, str] = {}
     for name, up in uploads.items():
         fname = up.filename or f"{name}.nii.gz"
@@ -196,6 +219,7 @@ async def predict(
 
     metrics = {
         "session_id": sid,
+        "patient_id": _patient_id(orig_names),
         "variant": _loaded_model.variant,
         "run_name": _loaded_model.run_name,
         "spatial_shape": list(case.spatial_shape),
@@ -267,6 +291,32 @@ async def upload_screenshot(sid: str, request: Request) -> dict:
     return {"ok": True}
 
 
+async def _save_shot(sid: str, request: Request, fname: str) -> dict:
+    sdir = S.session_path(sid)
+    if sdir is None:
+        raise HTTPException(404, "Session not found")
+    blob = await request.body()
+    if not blob:
+        raise HTTPException(400, "Empty body")
+    if len(blob) > 20 * 1024 * 1024:
+        raise HTTPException(413, "Screenshot too large")
+    with open(os.path.join(sdir, fname), "wb") as f:
+        f.write(blob)
+    return {"ok": True}
+
+
+@app.post("/api/session/{sid}/slices")
+async def upload_slices(sid: str, request: Request) -> dict:
+    """Orthogonal-slice viewer capture — bundled into the report PDF."""
+    return await _save_shot(sid, request, "slices.png")
+
+
+@app.post("/api/session/{sid}/uncertainty_shot")
+async def upload_uncertainty_shot(sid: str, request: Request) -> dict:
+    """Predictive-uncertainty viewer capture — bundled into the report PDF."""
+    return await _save_shot(sid, request, "uncertainty.png")
+
+
 @app.get("/api/session/{sid}/report")
 def download_report(sid: str) -> Response:
     sdir = S.session_path(sid)
@@ -280,13 +330,20 @@ def download_report(sid: str) -> Response:
         metrics = json.load(f)
     with open(summary_path, "r", encoding="utf-8") as f:
         summary_text = f.read()
+    metrics["model_name"] = I.MODEL_DISPLAY_NAME
     screenshot_path = os.path.join(sdir, "screenshot.png")
-    blob = RP.build_zip(sdir, metrics, summary_text,
-                       screenshot_path if os.path.exists(screenshot_path) else None)
+    slices_path = os.path.join(sdir, "slices.png")
+    uncertainty_path = os.path.join(sdir, "uncertainty.png")
+    blob = RPDF.build_pdf(
+        metrics, summary_text, lang="en",
+        screenshot_path=screenshot_path if os.path.exists(screenshot_path) else None,
+        slices_path=slices_path if os.path.exists(slices_path) else None,
+        uncertainty_path=uncertainty_path if os.path.exists(uncertainty_path) else None,
+    )
     return Response(
         content=blob,
-        media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="report_{sid[:8]}.zip"'},
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="report_{sid[:8]}.pdf"'},
     )
 
 
