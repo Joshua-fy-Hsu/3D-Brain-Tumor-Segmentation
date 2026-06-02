@@ -105,6 +105,7 @@
         Download Report (.zip)
       </button>
     </section>
+
   </aside>
 
   <section class="content">
@@ -238,6 +239,62 @@
       <p class="card-explain">
         Each percentage is the share of the whole-tumor mask that falls inside that labelled region. <strong>Left / Right</strong> is the brain hemisphere; the small grey code (e.g. <em>Calcarine_R</em>) is the raw atlas label. Localisation is for reference only.
       </p>
+    </div>
+
+    <!-- Environmental footprint & sustainability — full width, combined -->
+    <div class="card card-eco">
+      <div class="card-head-row">
+        <div class="card-icon" style="--icon-bg:#ecfdf5;--icon-fg:#059669">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </div>
+        <div>
+          <h3>Environmental Footprint &amp; Sustainability</h3>
+          <p class="card-sub">Measured GPU-card energy for this study, and this workstation's cumulative impact</p>
+        </div>
+      </div>
+      <div class="eco-split">
+        <div class="eco-col">
+          <div class="eco-col-head">This inference · measured GPU power (excludes CPU &amp; PSU)</div>
+          <ul class="metric-list">
+            <li>
+              <div class="metric-text">
+                <span class="metric-name">GPU energy</span>
+                <span class="metric-desc">Graphics-card board power, integrated over the run</span>
+              </div>
+              <span class="metric-value" id="en-energy">—</span>
+            </li>
+            <li>
+              <div class="metric-text">
+                <span class="metric-name">Carbon</span>
+                <span class="metric-desc">Taiwan grid · 0.494 kg CO₂e/kWh</span>
+              </div>
+              <span class="metric-value" id="en-co2">—</span>
+            </li>
+            <li>
+              <div class="metric-text">
+                <span class="metric-name">Electricity cost</span>
+                <span class="metric-desc">Taipower · ~NT$3.5/kWh</span>
+              </div>
+              <span class="metric-value" id="en-cost">—</span>
+            </li>
+          </ul>
+          <p id="en-method" class="card-explain">Awaiting prediction</p>
+          <p id="en-scale" class="flag eco"></p>
+        </div>
+        <div class="eco-col">
+          <div class="eco-col-head">Cumulative · all studies processed</div>
+          <div class="eco-hero">
+            <div class="eco-hero-num"><span id="stat-hours">—</span><span class="eco-hero-unit">h</span></div>
+            <div class="eco-hero-lbl">of manual segmentation time saved</div>
+          </div>
+          <ul class="eco-stats eco-stats-3">
+            <li><span class="eco-val" id="stat-count">—</span><span class="eco-lbl">studies analysed</span></li>
+            <li><span class="eco-val" id="stat-energy">—</span><span class="eco-lbl">total GPU energy</span></li>
+            <li><span class="eco-val" id="stat-co2">—</span><span class="eco-lbl">CO₂e emitted</span></li>
+          </ul>
+          <p id="stat-foot" class="panel-hint" style="margin-top:10px"></p>
+        </div>
+      </div>
     </div>
 
     <!-- Viewers below -->
