@@ -9,9 +9,10 @@ from typing import Optional
 
 
 def build_zip(session_dir: str, metrics: dict, summary_text: str,
-              screenshot_path: Optional[str] = None) -> bytes:
+              screenshot_path: Optional[str] = None,
+              slices_path: Optional[str] = None) -> bytes:
     """Returns the .zip bytes containing seg.nii.gz + metrics.json +
-    summary.txt + (optional) screenshot.png."""
+    summary.txt + (optional) screenshot.png + (optional) slices.png."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         seg_path = os.path.join(session_dir, "seg.nii.gz")
@@ -21,5 +22,7 @@ def build_zip(session_dir: str, metrics: dict, summary_text: str,
         zf.writestr("summary.txt", summary_text)
         if screenshot_path and os.path.exists(screenshot_path):
             zf.write(screenshot_path, arcname="screenshot.png")
+        if slices_path and os.path.exists(slices_path):
+            zf.write(slices_path, arcname="slices.png")
     buf.seek(0)
     return buf.read()
