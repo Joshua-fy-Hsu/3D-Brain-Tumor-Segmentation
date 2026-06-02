@@ -242,6 +242,9 @@ async function renderResults(resp) {
   $("#summary-text").classList.remove("muted");
   $("#summary-text").textContent = resp.summary || "";
 
+  renderEnergy(resp.energy);
+  loadStats();
+
   $("#modality-select").disabled = false;
   $("#opacity").disabled = false;
   $("#download-btn").disabled = false;
@@ -249,6 +252,63 @@ async function renderResults(resp) {
   await loadViewers(resp);
   startUncertaintyPoll(resp);
 }
+
+// --- Sustainability: per-case footprint + cumulative dashboard -----------
+const nf = (v, d = 0) => (v == null ? "—" : Number(v).toLocaleString(undefined, {
+  minimumFractionDigits: d, maximumFractionDigits: d,
+}));
+
+function renderEnergy(e) {
+  if (!e) {
+    $("#en-energy").textContent = "—";
+    $("#en-co2").textContent = "—";
+    $("#en-cost").textContent = "—";
+    $("#en-method").textContent = "Awaiting prediction";
+    $("#en-scale").textContent = "";
+    $("#en-scale").classList.remove("visible");
+    return;
+  }
+  $("#en-energy").textContent = `${fmt(e.energy_wh, 3)} Wh`;
+  $("#en-co2").textContent = `${fmt(e.co2_g, 2)} g`;
+  $("#en-cost").textContent = `NT$ ${fmt(e.cost_twd, 4)}`;
+  $("#en-method").textContent = e.measured
+    ? `Measured · ${e.backend_name || "GPU"} · ${fmt(e.mean_power_w, 0)} W avg over ${fmt(e.duration_s, 1)} s (${e.samples} samples)`
+    : "Estimated — no GPU power telemetry available on this host";
+
+  const s = e.scale;
+  if (s) {
+    const perCaseH = e.manual_minutes_saved / 60;
+    $("#en-scale").textContent =
+      `At ${nf(s.cases_per_day)} scans/day, a hospital would use ~${nf(s.energy_kwh, 1)} kWh/yr ` +
+      `(≈${nf(s.co2_kg, 1)} kg CO₂ ≈ ${nf(s.equiv_car_km)} km driving) while saving ` +
+      `~${nf(s.manual_hours_saved)} h of work — assuming ~${nf(perCaseH)} h of full manual ` +
+      `delineation per case (literature 1–4 h).`;
+    $("#en-scale").classList.add("visible");
+  }
+}
+
+async function loadStats() {
+  try {
+    const r = await fetch("/api/stats");
+    const s = await r.json();
+    // Adaptive units: a single inference is ~0.05 Wh, so kWh/kg would read
+    // "0.000" until tens of thousands of cases. Show Wh/g until they're large.
+    const wh = s.total_energy_wh || 0;
+    const g = s.total_co2_g || 0;
+    $("#stat-count").textContent = nf(s.total_inferences);
+    $("#stat-energy").textContent = wh >= 1000 ? `${fmt(wh / 1000, 3)} kWh` : `${fmt(wh, 2)} Wh`;
+    $("#stat-co2").textContent = g >= 1000 ? `${fmt(g / 1000, 3)} kg` : `${fmt(g, 2)} g`;
+    $("#stat-hours").textContent = nf(s.total_manual_hours_saved, 1);
+    if (s.total_inferences > 0) {
+      $("#stat-foot").textContent =
+        `≈ ${nf(s.equiv_car_km, 1)} km of driving in CO₂. Since ${s.since || "—"} · ` +
+        `grid ${s.grid_co2_kg_per_kwh} kg/kWh · telemetry: ${s.telemetry}.`;
+    } else {
+      $("#stat-foot").textContent = "Run your first study to start the ledger.";
+    }
+  } catch (_) { /* dashboard is best-effort */ }
+}
+loadStats();
 
 // --- Uncertainty polling -------------------------------------------------
 function startUncertaintyPoll(resp) {

@@ -31,6 +31,7 @@ if SRC not in sys.path:
     sys.path.append(SRC)
 
 from web import anatomy as A
+from web import energy as EN
 from web import inference as I
 from web import metrics_case as MC
 from web import preprocess as P
@@ -38,6 +39,7 @@ from web import report as RP
 from web import risk as RK
 from web import state as S
 from web import summary as SUM
+from web import usage as USG
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -108,6 +110,12 @@ def meta() -> dict:
     }
 
 
+@app.get("/api/stats")
+def stats() -> dict:
+    """Cumulative sustainability ledger for the dashboard panel."""
+    return EN.usage_summary(USG.snapshot())
+
+
 def _save_nifti(arr: np.ndarray, affine: np.ndarray, path: str) -> None:
     nib.save(nib.Nifti1Image(arr, affine), path)
 
@@ -142,14 +150,23 @@ async def predict(
     log.info(f"[{sid}] preprocessed shape={case.spatial_shape} "
              f"voxel={case.voxel_volume_ml:.4f} mL")
 
+    meter = EN.EnergyMeter()
     try:
-        res = I.run(_loaded_model, case.x)
+        with meter:
+            res = I.run(_loaded_model, case.x)
     except Exception as e:
         log.exception(f"[{sid}] inference failed")
         raise HTTPException(500, f"Inference failed: {e}")
     finally:
         if case.x.is_cuda:
             torch.cuda.empty_cache()
+
+    energy = meter.reading
+    USG.record(energy["energy_wh"], energy["co2_g"], energy["cost_twd"],
+               energy["manual_minutes_saved"])
+    log.info(f"[{sid}] energy={energy['energy_wh']} Wh "
+             f"co2={energy['co2_g']} g via {energy['method']} "
+             f"({energy['samples']} samples)")
 
     seg_canonical_path = os.path.join(sdir, "seg.nii.gz")
     _save_nifti(res.labels.astype(np.uint8), case.ref_affine, seg_canonical_path)
@@ -181,6 +198,7 @@ async def predict(
         "risk": risk,
         "anatomy_top": anatomy_top,
         "summary": summary_text,
+        "energy": energy,
     }
     with open(os.path.join(sdir, "metrics.json"), "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2)
