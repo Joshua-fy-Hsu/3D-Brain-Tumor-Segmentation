@@ -35,8 +35,8 @@ ELECTRICITY_TWD_PER_KWH = float(os.environ.get("ELECTRICITY_TWD_PER_KWH", "3.5")
 # Minutes for full manual 3D voxel-wise delineation of all tumour sub-regions
 # (NCR/ED/ET over the whole volume) — the research-grade task this model
 # actually replaces. Literature puts this at ~1–4 h/case; we default to the
-# conservative mid value of 2 h. Override via MANUAL_SEG_MINUTES.
-MANUAL_SEG_MINUTES = float(os.environ.get("MANUAL_SEG_MINUTES", "120"))
+# conservative low value of 1 h. Override via MANUAL_SEG_MINUTES.
+MANUAL_SEG_MINUTES = float(os.environ.get("MANUAL_SEG_MINUTES", "60"))
 # Fallback GPU power if no telemetry is available (RTX 4060 Laptop ~ 75 W busy).
 FALLBACK_GPU_TDP_W = float(os.environ.get("FALLBACK_GPU_TDP_W", "75"))
 
