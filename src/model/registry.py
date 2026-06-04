@@ -27,101 +27,36 @@ if SRC not in sys.path:
     sys.path.append(SRC)
 
 from model.model import ResUnet3D
-from model.model_transformer import ResUnet3DTransformer
 from model.trans_resunet import TransResUNet3D
-# Clean-slate CNN+Transformer built solely to beat the unet3d baseline.
-# Standalone — does NOT import from model.model / model_transformer /
-# trans_resunet (the AURAS family). See src/model/hybrid.py.
+# Clean-slate CNN+Transformer (the headline model, AURA). Standalone — does
+# NOT import from model.model / model_transformer / trans_resunet.
+# See src/model/hybrid.py.
 from model.hybrid import HybridUNet3D
-# Phase 7 baseline factories. These do a *lazy* MONAI import inside the
-# factory body, so importing them here keeps registry import MONAI-free.
-from model.baselines import build_segresnet, build_swinunetr, build_unet3d
 
 
 # (factory, default_kwargs, output_mode, arch_family)
 VariantSpec = Tuple[Callable[..., Any], Dict[str, Any], str, str]
 
 
-def _not_implemented(name: str):
-    def _raise(**_kw):
-        raise NotImplementedError(
-            f"Variant '{name}' is not implemented yet. See implementation plan "
-            f"phases. Available variants: {sorted(VARIANTS)}"
-        )
-    return _raise
-
-
+# The public release keeps three models — a plain CNN baseline, a fully-featured
+# "complex" model, and the headline AURA model:
+#
+#   base_cnn (baseline) — 3D Residual U-Net, no transformer/attention.
+#   full     (Complex)  — TransResUNet3D with every component enabled
+#                         (modality stems + cross-modal attention + frequency
+#                         branch + spectral-Swin stage + predictive-variance
+#                         head + boundary head + deeper Swin/encoder + multi-
+#                         scale fusion head). The "kitchen-sink" comparison.
+#   hybrid   (AURA)     — clean-slate TransBTS-style CNN encoder + transformer
+#                         bottleneck + CNN decoder, 4-class softmax head,
+#                         MC-Dropout uncertainty. The deployed/web model.
+#
 VARIANTS: Dict[str, VariantSpec] = {
-    # ---- Baselines / current models (Phase 0) --------------------------------
     "base_cnn": (
         ResUnet3D,
         dict(in_channels=5, num_classes=4, base_filters=32),
         "softmax", "cnn",
     ),
-    "current_transformer": (
-        ResUnet3DTransformer,
-        dict(in_channels=5, num_classes=4, base_filters=32,
-             output_mode="softmax",
-             decoder_dropout_inner=0.0, decoder_dropout_final=0.05),
-        "softmax", "transformer",
-    ),
-
-    # ---- Ablation variants (Phases 1–6) --------------------------------------
-    # Filled in as each phase lands.
-    "cross_modal": (
-        TransResUNet3D,
-        dict(in_channels=5, num_classes=4, base_filters=32,
-             use_modality_stems=True, use_cross_modal=True,
-             output_mode="softmax"),
-        "softmax", "cnn",
-    ),
-    "frequency": (
-        TransResUNet3D,
-        dict(in_channels=5, num_classes=4, base_filters=32,
-             use_modality_stems=True, use_cross_modal=True,
-             use_freq=True,
-             output_mode="softmax"),
-        "softmax", "cnn",
-    ),
-    "spectral_swin": (
-        TransResUNet3D,
-        dict(in_channels=5, num_classes=4, base_filters=32,
-             use_modality_stems=True, use_cross_modal=True,
-             use_freq=True,
-             use_spectral_swin=True,
-             output_mode="softmax"),
-        "softmax", "transformer",
-    ),
-    "uncertainty": (
-        TransResUNet3D,
-        dict(in_channels=5, num_classes=4, base_filters=32,
-             use_modality_stems=True, use_cross_modal=True,
-             use_freq=True,
-             use_spectral_swin=True,
-             use_uncertainty=True,
-             output_mode="softmax"),
-        "softmax", "transformer",
-    ),
-    "boundary": (
-        TransResUNet3D,
-        dict(in_channels=5, num_classes=4, base_filters=32,
-             use_modality_stems=True, use_cross_modal=True,
-             use_freq=True,
-             use_spectral_swin=True,
-             use_uncertainty=True,
-             use_boundary=True,
-             output_mode="softmax"),
-        "softmax", "transformer",
-    ),
-    # Phase 6: deeper Swin (4 blocks/stage), extra encoder depth at 16^3,
-    # multi-scale fusion head. Same Phase-1-5 flags as `boundary`; different
-    # architecture from `boundary` (own checkpoint). Trained with top-K=5
-    # snapshot saving; evaluated with ensemble + extended TTA + tuned V_min.
-    #
-    # decoder_dropout_final=0.05: first run used 0.10 and underfit (ET dropped
-    # 0.066 vs boundary). boundary's TransResUNet3D defaults dropout to 0.0;
-    # 0.05 here is a compromise that preserves MC Dropout uncertainty at eval
-    # without over-regularising the larger model.
     "full": (
         TransResUNet3D,
         dict(in_channels=5, num_classes=4, base_filters=32,
@@ -137,102 +72,26 @@ VARIANTS: Dict[str, VariantSpec] = {
              output_mode="softmax"),
         "softmax", "transformer",
     ),
-
-    # ---- Lean variant — data-driven debloat of `full` ------------------------
-    # The full ablation chain never beats plain base_cnn on TC; freq/uncertainty
-    # are TC-poison and boundary only patches what uncertainty broke. full_lean
-    # keeps only the proven winners (spectral_swin + Phase-6 arch) plus the
-    # monotonic prerequisite (modality_stems + cross_modal), drops freq /
-    # uncertainty / boundary, and adds a dedicated TC-Refine pathway. Trained
-    # once with TC-weighted loss + heavier spatial aug to beat the unet3d
-    # baseline on mean Dice. decoder_dropout_final=0.05 kept so MC-Dropout
-    # still provides a training-free uncertainty signal at eval.
-    "full_lean": (
-        TransResUNet3D,
-        dict(in_channels=5, num_classes=4, base_filters=32,
-             use_modality_stems=True, use_cross_modal=True,
-             use_spectral_swin=True,
-             spectral_blocks_per_stage=4,
-             encoder_extra_depth=True,
-             use_multiscale_fusion_head=True,
-             use_tc_refine=True,
-             decoder_dropout_final=0.05,
-             output_mode="softmax"),
-        "softmax", "transformer",
-    ),
-
-    # ---- Clean-slate model — built only to beat the unet3d baseline ----------
-    # TransBTS-style: residual CNN encoder + transformer at the 8^3 bottleneck
-    # + CNN decoder, 3-level deep supervision, 2x Dropout3d (eval MC-Dropout).
-    # 4-class softmax head → standard argmax decode (no sigmoid TC-leak).
-    # arch_family="cnn" → eval AMP fp16, exactly like unet3d. Trained with the
-    # dedicated `hybrid` preset (a near-exact clone of unet3d's winning recipe
-    # + top-K=5 snapshot ensemble). Fully standalone (model/hybrid.py).
     "hybrid": (
         HybridUNet3D,
         dict(in_channels=5, num_classes=4, base_filters=32),
-        "softmax", "cnn",
-    ),
-
-    # ---- Efficient variant (Phase 6b — pruned/distilled from `full`) ---------
-    "full_efficient":   (_not_implemented("full_efficient"),   {}, "softmax", "transformer"),
-
-    # ---- External baselines (Phase 7) ----------------------------------------
-    # Wired up when each baseline is integrated. MONAI ones are drop-in;
-    # nnU-Net runs as an external framework so it lives outside this registry.
-    # The 3 below are the chosen comparison set: SOTA transformer (swinunetr),
-    # SOTA CNN / BraTS-2018 winner (segresnet), lower-bound baseline (unet3d).
-    # All run in standard, no-deep-supervision config — the fair comparison.
-    "swinunetr": (
-        build_swinunetr,
-        dict(in_channels=5, num_classes=4, feature_size=48),
-        "softmax", "transformer",
-    ),
-    "unetr":            (_not_implemented("unetr"),            {}, "softmax", "transformer"),
-    "segresnet": (
-        build_segresnet,
-        dict(in_channels=5, num_classes=4, init_filters=32),
-        "softmax", "cnn",
-    ),
-    "transbts":         (_not_implemented("transbts"),         {}, "softmax", "transformer"),
-    "vtunet":           (_not_implemented("vtunet"),           {}, "softmax", "transformer"),
-    "mednext":          (_not_implemented("mednext"),          {}, "softmax", "cnn"),
-    "unet3d": (
-        build_unet3d,
-        dict(in_channels=5, num_classes=4),
         "softmax", "cnn",
     ),
 }
 
 
 # Product-facing display names. The registry keys above are load-bearing
-# (logs/run_<key>_*, results/<key>/, scripts/phase*.sh, checkpoint matching)
-# and must NEVER change. These are the brand names shown in the web UI,
-# report exports, and figures. Anything not listed falls back to its raw key.
+# (logs/run_<key>_*, results/<key>/, checkpoint matching) and must NEVER
+# change. These are the brand names shown in the web UI, report exports, and
+# figures. Anything not listed falls back to its raw key.
 #
-# The deployed/headline model is `full_lean` -> ATLAS:
-#   A = All-modality   (Modality Stems + Cross-Modal Attention; all 4 MRI)
-#   T = Transformer    (Spectral-Swin Stage)
-#   L = Localization   (TC-Refine head — dedicated tumor-core pathway)
-#   A = Aggregation    (Multi-scale Fusion Head)
-#   S = Spectral       (Spectral-Swin spectral branch)
-# `full` keeps the legacy AURAS name (the bloated predecessor: All-modality,
-# Uncertainty-aware, Residual, Aggregation, Spectral); the ablation rows are
-# the AURAS family.
-#
-# `hybrid` -> AURA: the clean-slate CNN+Transformer built standalone (not part
-# of the AURAS ablation chain) to beat the unet3d baseline. Bare brand name —
-# no forced backronym; report/figures explain the architecture in prose.
+#   base_cnn -> baseline   the plain 3D Residual U-Net comparison point.
+#   full     -> Complex    the all-components-on model.
+#   hybrid   -> AURA       the headline / deployed model.
 DISPLAY_NAMES: Dict[str, str] = {
-    "full":          "Complex",
-    "full_lean":     "ATLAS",
-    "hybrid":        "AURA",
-    "boundary":      "AURAS-B",
-    "uncertainty":   "AURAS-U",
-    "spectral_swin": "AURAS-S",
-    "frequency":     "AURAS-F",
-    "cross_modal":   "AURAS-CM",
-    "base_cnn":      "baseline",
+    "base_cnn": "baseline",
+    "full":     "Complex",
+    "hybrid":   "AURA",
 }
 
 

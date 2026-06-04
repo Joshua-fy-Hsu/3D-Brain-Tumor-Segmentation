@@ -3,12 +3,11 @@
 Run *after* `.to(device)` in the train loop. All ops are batched and run on
 GPU in bf16/fp16, so they cost a few ms per batch vs 100+ ms on CPU.
 
-full_lean: spatial augmentation is deliberately heavier (bigger zoom incl.
-zoom-out, small 3D rotation, elastic deformation) to combat data scarcity
-for the debloated model. Intensity aug (blur here; noise/brightness/contrast
-on the CPU side) is left light on purpose — aggressive intensity jitter
-mixes the low-contrast NCR core into edema/healthy tissue and re-damages TC,
-which is exactly the region full_lean must win.
+Spatial augmentation is deliberately heavier (bigger zoom incl. zoom-out,
+small 3D rotation, elastic deformation) to combat data scarcity. Intensity
+aug (blur here; noise/brightness/contrast on the CPU side) is left light on
+purpose — aggressive intensity jitter mixes the low-contrast NCR core into
+edema/healthy tissue and re-damages the tumor core.
 
 img:  (B, C, D, H, W) — channels 0..C-2 are MRI, the last channel is the
       binary foreground mask. Spatial warps move the foreground channel with

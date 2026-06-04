@@ -1,8 +1,8 @@
-"""Shared evaluation core used by `evaluate_cnn.py` and `evaluate_transformer.py`.
+"""Shared evaluation core used by `evaluate_variant.py`.
 
 Contains all the per-case inference, calibration, post-processing and summary
-logic. The two entry-point scripts call `run_evaluation()` with their own
-model + checkpoint after parsing CLI args via `add_common_args()`.
+logic. The entry-point script calls `run_evaluation()` with its model +
+checkpoint after parsing CLI args via `add_common_args()`.
 """
 import argparse
 import datetime
@@ -104,8 +104,7 @@ def detect_output_mode(ckpt_path, fallback=None):
     ``_SegWrapper``) name their head differently, so neither key is present.
     When ``fallback`` is given (the registry's declared output_mode, which is
     authoritative for a known variant) it is returned instead of raising.
-    With no fallback the legacy behaviour — a hard KeyError — is preserved
-    for the legacy evaluate_cnn/transformer callers."""
+    With no fallback a hard KeyError is raised."""
     sd = torch.load(ckpt_path, map_location="cpu", weights_only=True)
     if "final_conv.weight" in sd:
         out_ch = sd["final_conv.weight"].shape[0]

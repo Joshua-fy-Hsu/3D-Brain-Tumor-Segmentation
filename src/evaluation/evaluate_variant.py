@@ -1,14 +1,14 @@
 """Variant-aware evaluator.
 
-Subsumes evaluate_cnn.py and evaluate_transformer.py. Reads the variant from
-the registry, picks the right AMP family (fp16 for CNN, bf16 for transformer)
-unless overridden, and writes results to results/<variant>/eval_*/.
+Reads the variant from the registry, picks the right AMP family (fp16 for CNN,
+bf16 for transformer) unless overridden, and writes results to
+results/<variant>/eval_*/.
 
 Usage:
   python src/evaluation/evaluate_variant.py --variant base_cnn
-  python src/evaluation/evaluate_variant.py --variant current_transformer --vmin-sweep
-  python src/evaluation/evaluate_variant.py --variant cross_modal \\
-      --checkpoint logs/run_cross_modal_.../best_model.pth
+  python src/evaluation/evaluate_variant.py --variant full --vmin-sweep
+  python src/evaluation/evaluate_variant.py --variant hybrid \\
+      --checkpoint logs/run_hybrid_.../best_model.pth
 """
 import argparse
 import os
@@ -54,8 +54,8 @@ def main():
         # fp16) can be plumbed without touching _core.
         pass
 
-    # Build the model. Some transformer variants (current_transformer) accept
-    # output_mode at construction time and the head shape depends on it.
+    # Build the model. Some transformer variants accept output_mode at
+    # construction time and the head shape depends on it.
     # If a checkpoint is supplied, sniff its head shape first so we instantiate
     # the right variant. Otherwise build with the registry default and then
     # use that to filter checkpoints during auto-discovery.

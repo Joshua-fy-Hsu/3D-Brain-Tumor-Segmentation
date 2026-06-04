@@ -3,10 +3,8 @@
 #   pip install torch --index-url https://download.pytorch.org/whl/cu121
 # Then: pip install -r requirements.txt
 torch>=2.1
-# Hard dep of evaluation AND the Phase 7 baselines (SwinUNETR / SegResNet /
-# BasicUNet in src/model/baselines/). >=1.3 is the floor; the wrapper is
-# written to tolerate the SwinUNETR `img_size` API change in 1.4+, so no
-# upper pin.
+# Hard dependency of the evaluation pipeline (sliding-window inference,
+# metrics). >=1.3 is the floor; no upper pin.
 monai>=1.3
 
 # Medical-imaging IO and numerics.

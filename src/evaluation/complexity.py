@@ -11,8 +11,8 @@ the Path-C deployment story (efficient variant inference cost vs full model).
 
 CLI:
   python -m evaluation.complexity --variant base_cnn
-  python -m evaluation.complexity --variant current_transformer --device cpu
-  python -m evaluation.complexity --variant base_cnn --out results/complexity.csv
+  python -m evaluation.complexity --variant full --device cpu
+  python -m evaluation.complexity --variant hybrid --out results/complexity.csv
 
 Notes:
   - fvcore.nn.FlopCountAnalysis is the de-facto standard for FLOPs in
@@ -141,8 +141,8 @@ def profile_variant(name: str, device: str = "cuda",
         device = "cpu"
     dev = torch.device(device)
 
-    # Build the model. `current_transformer` uses 5 channels, base_cnn uses 5
-    # too (BraTS-2021 4 modalities + foreground mask). Registry decides.
+    # Build the model. All variants use 5 input channels (BraTS-2021 4
+    # modalities + foreground mask). Registry decides the rest.
     model = build_variant(name).to(dev)
     total_p, trainable_p = count_params(model)
 

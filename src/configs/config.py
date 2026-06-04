@@ -2,7 +2,15 @@ import torch
 import os
 
 # --- PATH CONFIGURATION ---
-TRAIN_DATA_PATH = r"/workspace/3D-Brain-Tumor-Segmentation/data/BraTS2021_Optimized"
+# Path to the preprocessed BraTS-2021 dataset (output of
+# src/preprocessing/optimizing.py). Override per machine with the
+# BRATS_DATA_PATH environment variable; defaults to ./data/BraTS2021_Optimized
+# relative to the repo root.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+TRAIN_DATA_PATH = os.environ.get(
+    "BRATS_DATA_PATH",
+    os.path.join(_REPO_ROOT, "data", "BraTS2021_Optimized"),
+)
 
 # List of MRI modalities used as input channels.
 MODALITIES = ["t1", "t1ce", "t2", "flair"]
@@ -39,7 +47,7 @@ EARLY_STOP_MIN_EPOCH = 50  # don't stop before this epoch (let LR warmup + early
 
 # --- TRANSFORMER REGULARIZATION ---
 # Stochastic depth + a single low-dose Dropout3d at the final decoder stage
-# (set explicitly in train_transformer.py via decoder_dropout_inner=0.0,
+# (set via the registry kwargs decoder_dropout_inner=0.0,
 # decoder_dropout_final=0.05). The four attention-side dropouts are zeroed
 # because they stack redundantly on a 1k-volume training set. DECODER_DROPOUT
 # is kept as a legacy default for any caller that still passes it positionally.

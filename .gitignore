@@ -1,17 +1,43 @@
-# --- 資料與模型 ---
+# --- 資料與模型權重 ---
+# 權重 (.pth) 不進 git — 透過 GitHub Releases 發佈 (單檔 >100MB 超過 GitHub 限制)。
 data/
 archive/
-results/
 *.pt
 *.pth
 *.h5
 *.safetensors
 *.onnx
 
-# --- 日誌與暫存 ---
-logs/
+# --- 評估 results:track CSV/JSON/plots，排除 runtime 快取與大型中間檔 ---
+results/**/_resume_cache/
+results/**/_ts_logits_cache/
+results/**/_aborted_*/
+results/**/uncertainty/
+*.npy
+*.npz
+
+# --- 訓練 logs:track training_log.csv + snapshots.json，排除 tensorboard events ---
+events.out.tfevents.*
+
+# --- 暫存 ---
 __pycache__/
+.ipynb_checkpoints/
 *.log
+
+# --- Web app 執行階段產物 (per-inference sessions + cumulative ledger) ---
+web/_sessions/
+web/_stats/
+web/command.txt
+*.nii
+*.nii.gz
+
+# --- 中文版 web app：本地保留，不公開 (依賴 web/ 後端) ---
+web_zh/
+
+# --- docs:只公開 4 份 PROJECT PDF；其餘 (競賽/會議/figures+demo影片) 本地私有 ---
+docs/competition/
+docs/figures/
+docs/meetings/
 
 # --- 編輯器與環境設定 ---
 .vscode/
