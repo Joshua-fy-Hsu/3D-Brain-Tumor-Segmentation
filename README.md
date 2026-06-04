@@ -278,6 +278,13 @@ architecture and runs the same inference path as
 `evaluate_variant.py --variant hybrid` (no TTA / MC-Dropout, for latency). See
 [`web/README.md`](web/README.md) for the API.
 
+A Traditional-Chinese localization of the workstation lives in
+[`web/web_zh/`](web/web_zh/) (reuses the same `web/` backend):
+
+```bash
+python -m uvicorn web.web_zh.server:app --host 0.0.0.0 --port 8001
+```
+
 ---
 
 ## License & acknowledgements

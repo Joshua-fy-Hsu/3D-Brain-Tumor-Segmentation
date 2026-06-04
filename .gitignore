@@ -31,9 +31,6 @@ web/command.txt
 *.nii
 *.nii.gz
 
-# --- 中文版 web app：本地保留，不公開 (依賴 web/ 後端) ---
-web_zh/
-
 # --- docs:只公開 4 份 PROJECT PDF；其餘 (競賽/會議/figures+demo影片) 本地私有 ---
 docs/competition/
 docs/figures/
