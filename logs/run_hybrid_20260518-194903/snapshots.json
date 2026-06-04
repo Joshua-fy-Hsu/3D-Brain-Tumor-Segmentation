@@ -1,0 +1,36 @@
+{
+  "k": 5,
+  "min_gap": 15,
+  "entries": [
+    {
+      "rank": 1,
+      "val_dice": 0.7948978679875532,
+      "epoch": 278,
+      "path": "snapshot_top1.pth"
+    },
+    {
+      "rank": 2,
+      "val_dice": 0.7913942039789011,
+      "epoch": 208,
+      "path": "snapshot_top2.pth"
+    },
+    {
+      "rank": 3,
+      "val_dice": 0.7889600473766526,
+      "epoch": 183,
+      "path": "snapshot_top3.pth"
+    },
+    {
+      "rank": 4,
+      "val_dice": 0.7875310479042431,
+      "epoch": 246,
+      "path": "snapshot_top4.pth"
+    },
+    {
+      "rank": 5,
+      "val_dice": 0.7872482328675687,
+      "epoch": 295,
+      "path": "snapshot_top5.pth"
+    }
+  ]
+}

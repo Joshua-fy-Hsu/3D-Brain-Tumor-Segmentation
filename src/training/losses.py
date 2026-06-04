@@ -1,8 +1,8 @@
-"""Training losses (relocated from `train.py` in Phase 4).
+"""Training losses.
 
-Exports the existing region-wise softmax/sigmoid Dice+Focal losses plus the
-new Phase-4 `UncertaintyAwareLoss`. Re-exported by `train.py` for backwards
-compatibility — the legacy trainer still imports them from there.
+Exports the region-wise softmax/sigmoid Dice+Focal losses plus the
+`UncertaintyAwareLoss` and `BoundaryAwareLoss` wrappers used by the `full`
+model. Imported by `train_variant.py`.
 
 UncertaintyAwareLoss
 --------------------
@@ -46,9 +46,6 @@ import torch.nn.functional as F
 
 # ---------------------------------------------------------------------------
 # Region-wise softmax Dice + Focal — for 4-channel (BG/NCR/ED/ET) heads.
-# Identical to the original in train.py; copied here so train.py's import can
-# alias it back. Kept module-level so checkpoints loaded by either path see the
-# same class (state_dict keys are unaffected — only nn.Modules matter).
 # ---------------------------------------------------------------------------
 class RegionWiseDiceFocalLoss(nn.Module):
     """
@@ -469,67 +466,3 @@ class BoundaryAwareLoss(nn.Module):
             self.bce_weight * bce_total + self.edge_dice_weight * edge_dice_total
         )
         return loss + self.lambda_boundary * boundary_term
-
-
-# ---------------------------------------------------------------------------
-# full_lean — TC-Refine deep-supervised loss
-# ---------------------------------------------------------------------------
-class TCRefineLoss(nn.Module):
-    """Wraps a softmax seg loss and adds deep supervision on the TC-Refine head.
-
-        L_total = L_seg(base) + Σ_i w_i · (BCE + softDice)(σ(tc_i), TC_mask)
-
-    where TC_mask = (targets == 1) | (targets == 3) (NCR ∪ ET = tumor core),
-    tc_1 is the full-res TC logit, tc_2 the 1/2-res one (TC_mask nearest-
-    downsampled). The base loss already carries the TC region up-weight via
-    `RegionWiseDiceFocalLoss(region_weights=...)`; this term gives the TC
-    pathway its own gradient so the gated residual learns something useful.
-
-    `forward_single` is a pure-seg pass (delegates to the base loss) so the
-    `train_variant.py` validation loop keeps working unchanged.
-    """
-
-    def __init__(
-        self,
-        base_loss: nn.Module,
-        ds_weights: Sequence[float] = (1.0, 0.5),
-        smooth: float = 1e-5,
-    ):
-        super().__init__()
-        self.base_loss = base_loss
-        self.ds_weights = tuple(float(w) for w in ds_weights)
-        assert len(self.ds_weights) == 2, "ds_weights must be (w_full, w_half)"
-        self.smooth = float(smooth)
-
-    # pass-through for the val loop
-    def forward_single(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        return self.base_loss.forward_single(inputs, targets)
-
-    @staticmethod
-    def _tc_mask(targets: torch.Tensor) -> torch.Tensor:
-        """(B,D,H,W) long → (B,1,D,H,W) float in {0,1}: NCR ∪ ET."""
-        m = ((targets == 1) | (targets == 3)).float()
-        return m.unsqueeze(1)
-
-    def _tc_term(self, tc_logit: torch.Tensor, tc_mask: torch.Tensor) -> torch.Tensor:
-        # BCE-with-logits is autocast-safe; soft Dice on the sigmoid prob.
-        bce = F.binary_cross_entropy_with_logits(
-            tc_logit.float(), tc_mask, reduction="mean"
-        )
-        p = torch.sigmoid(tc_logit.float())
-        inter = (p * tc_mask).sum(dim=(1, 2, 3, 4))
-        denom = p.sum(dim=(1, 2, 3, 4)) + tc_mask.sum(dim=(1, 2, 3, 4))
-        dice = (2.0 * inter + self.smooth) / (denom + self.smooth)
-        return bce + (1.0 - dice.mean())
-
-    def forward(self, inputs_list, targets: torch.Tensor, tc=None) -> torch.Tensor:
-        loss = self.base_loss(inputs_list, targets)
-        if tc is None:
-            return loss
-        tc1, tc2 = tc
-        m_full = self._tc_mask(targets)
-        loss = loss + self.ds_weights[0] * self._tc_term(tc1, m_full)
-        if tc2 is not None:
-            m_half = F.interpolate(m_full, size=tc2.shape[2:], mode="nearest")
-            loss = loss + self.ds_weights[1] * self._tc_term(tc2, m_half)
-        return loss

@@ -35,7 +35,7 @@ class BratsDataset(Dataset):
     - Training augmentations: zoom, per-axis flip, Gaussian noise/blur, brightness, contrast
 
     `gpu_aug=True` skips the CPU-side zoom and gaussian blur in `augment` because
-    the caller (e.g. train_transformer.py) runs equivalent ops on the GPU after
+    the caller (`train_variant.py`) runs equivalent ops on the GPU after
     `.to(device)`. Other CPU augmentations (flips, noise, brightness, contrast)
     still run because they have no GPU counterpart.
     """
