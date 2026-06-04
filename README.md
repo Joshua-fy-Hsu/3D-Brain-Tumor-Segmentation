@@ -176,16 +176,16 @@ evaluation pipeline; `torchio` (robustness perturbations) and the
 
 ## Pretrained weights
 
-Model checkpoints are too large for the git repo, so they are published as
-**GitHub Release** assets. Download the `best_model.pth` (and, for the
-snapshot-ensemble variants, the `snapshot_top*.pth`) for the model you want and
-place it under a matching run directory, e.g.:
+Model checkpoints are too large for the git repo, so they are published on the
+[**Releases**](https://github.com/Joshua-fy-Hsu/3D-Brain-Tumor-Segmentation/releases)
+page (`v1.0`). Download the asset for the model you want, rename it to
+`best_model.pth`, and place it under a matching run directory:
 
-```
-logs/run_hybrid_<id>/best_model.pth        # AURA   (used by the web app)
-logs/run_full_<id>/best_model.pth          # Complex
-logs/run_base_cnn_<id>/best_model.pth      # baseline
-```
+| Release asset | Place as |
+|---|---|
+| `hybrid_best_model.pth`   | `logs/run_hybrid_<id>/best_model.pth`   (AURA — used by the web app) |
+| `full_best_model.pth`     | `logs/run_full_<id>/best_model.pth`     (Complex) |
+| `base_cnn_best_model.pth` | `logs/run_base_cnn_<id>/best_model.pth` (baseline) |
 
 The evaluator and web app auto-discover the newest checkpoint whose weights
 match the requested variant; pass `--checkpoint <path>` to override. The
