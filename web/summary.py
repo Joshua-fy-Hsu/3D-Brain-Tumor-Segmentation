@@ -19,13 +19,15 @@ def _fmt_conf(c: Optional[float]) -> str:
     return "n/a" if c is None else f"{c:.2f}"
 
 
-def build(volumes: dict, anatomy: list[dict], confidence: dict, risk: dict) -> str:
+def build(volumes: dict, anatomy: list[dict], confidence: dict, risk: dict,
+          malignancy: Optional[dict] = None) -> str:
     """Returns the paragraph text.
 
     volumes:   {"ET": float, "TC": float, "WT": float} in mL.
     anatomy:   list of {"name", "pct"} sorted by pct desc, top-K.
     confidence:{"ET": Optional[float], "TC":..., "WT":...} in [0,1].
     risk:      output of risk.classify (per-region {"level","percentile",...}).
+    malignancy:output of malignancy.assess (imaging-feature indicator) or None.
     """
     wt_v = volumes.get("WT", 0.0)
     tc_v = volumes.get("TC", 0.0)
@@ -62,6 +64,15 @@ def build(volumes: dict, anatomy: list[dict], confidence: dict, risk: dict) -> s
         parts.append(
             f"Warning: {'/'.join(low)} confidence below {LOW_CONF_THRESHOLD:.2f} "
             f"threshold — interpret with caution."
+        )
+
+    if malignancy and malignancy.get("category") not in (None, "unknown"):
+        drivers = malignancy.get("drivers") or []
+        drv = f" ({'; '.join(drivers)})" if drivers else ""
+        parts.append(
+            f"Imaging-feature note: {malignancy.get('label', '')}{drv}. "
+            f"This is a descriptive imaging indicator only, not a tumour "
+            f"grade/stage and not validated against pathology."
         )
 
     return " ".join(parts)

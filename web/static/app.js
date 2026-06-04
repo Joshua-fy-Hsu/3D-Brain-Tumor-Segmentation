@@ -188,6 +188,17 @@ async function renderResults(resp) {
   $("#vol-tc").textContent = vol.TC == null ? "—" : `${fmt(vol.TC, 1)} mL`;
   $("#vol-et").textContent = vol.ET == null ? "—" : `${fmt(vol.ET, 1)} mL`;
 
+  const vp = resp.volume_pct || {};
+  const pctText = (entry) => {
+    if (!entry || entry.pct == null) return "";
+    const base = entry.of === "brain" ? "of brain" : "of whole tumor";
+    const dp = entry.of === "brain" ? 2 : 0;
+    return `${fmt(entry.pct, dp)}% ${base}`;
+  };
+  $("#pct-wt").textContent = pctText(vp.WT);
+  $("#pct-tc").textContent = pctText(vp.TC);
+  $("#pct-et").textContent = pctText(vp.ET);
+
   const conf = resp.confidence || {};
   const pct = (v) => (v == null ? "—" : `${Math.round(Number(v) * 100)}%`);
   $("#conf-wt").textContent = pct(conf.WT);
@@ -214,6 +225,8 @@ async function renderResults(resp) {
   $("#risk-pct").textContent = wtRisk.percentile == null
     ? "Population reference unavailable"
     : `${wtRisk.percentile}th percentile · larger than ${wtRisk.percentile}% of the cohort`;
+
+  renderMalignancy(resp.malignancy);
 
   const ul = $("#anatomy-list");
   ul.innerHTML = "";
@@ -251,6 +264,30 @@ async function renderResults(resp) {
 
   await loadViewers(resp);
   startUncertaintyPoll(resp);
+}
+
+// --- Imaging malignancy-tendency indicator (descriptive, non-diagnostic) --
+function renderMalignancy(m) {
+  const badge = $("#mal-badge");
+  const idxEl = $("#mal-index");
+  const ul = $("#mal-drivers");
+  ul.innerHTML = "";
+  if (!m) {
+    badge.textContent = "—";
+    badge.style.background = "#94a3b8";
+    idxEl.textContent = "Awaiting prediction";
+    return;
+  }
+  badge.textContent = m.label || "—";
+  badge.style.background = m.color || "#94a3b8";
+  idxEl.textContent = m.index == null
+    ? "No tumour segmented"
+    : `Imaging index ${fmt(m.index, 2)} (0 = lowest · 1 = highest)`;
+  for (const d of (m.drivers || [])) {
+    const li = document.createElement("li");
+    li.textContent = d;
+    ul.appendChild(li);
+  }
 }
 
 // --- Sustainability: per-case footprint + cumulative dashboard -----------

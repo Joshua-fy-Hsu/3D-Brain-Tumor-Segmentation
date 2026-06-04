@@ -144,21 +144,30 @@
               <span class="metric-name">Whole Tumor</span>
               <span class="metric-desc">All abnormal tissue (NCR + ED + ET)</span>
             </div>
-            <span class="metric-value" id="vol-wt">—</span>
+            <div class="metric-value-col">
+              <span class="metric-value" id="vol-wt">—</span>
+              <span class="metric-pct" id="pct-wt"></span>
+            </div>
           </li>
           <li>
             <div class="metric-text">
               <span class="metric-name">Tumor Core</span>
               <span class="metric-desc">Necrotic + enhancing tissue</span>
             </div>
-            <span class="metric-value" id="vol-tc">—</span>
+            <div class="metric-value-col">
+              <span class="metric-value" id="vol-tc">—</span>
+              <span class="metric-pct" id="pct-tc"></span>
+            </div>
           </li>
           <li>
             <div class="metric-text">
               <span class="metric-name">Enhancing Tumor</span>
               <span class="metric-desc">Active, contrast-enhancing region</span>
             </div>
-            <span class="metric-value" id="vol-et">—</span>
+            <div class="metric-value-col">
+              <span class="metric-value" id="vol-et">—</span>
+              <span class="metric-pct" id="pct-et"></span>
+            </div>
           </li>
         </ul>
       </div>
@@ -200,24 +209,33 @@
         <p id="conf-flag" class="flag"></p>
       </div>
 
-      <!-- Risk vs population -->
+      <!-- Tumor assessment: size-vs-population + imaging malignancy (merged) -->
       <div class="card">
         <div class="card-head-row">
           <div class="card-icon" style="--icon-bg:#fef3ef;--icon-fg:#ea580c">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
           </div>
           <div>
-            <h3>Size vs Population</h3>
-            <p class="card-sub">Whole-tumor volume compared with 1251 BraTS patients</p>
+            <h3>Tumor Assessment</h3>
+            <p class="card-sub">Size grading &amp; imaging malignancy tendency</p>
           </div>
         </div>
-        <div class="risk-area">
-          <span class="risk-badge" id="risk-badge">—</span>
-          <p class="risk-pct" id="risk-pct">Awaiting prediction</p>
+        <div class="assess-block">
+          <span class="assess-label">Size vs Population</span>
+          <div class="risk-area">
+            <span class="risk-badge" id="risk-badge">—</span>
+            <p class="risk-pct" id="risk-pct">Awaiting prediction</p>
+          </div>
         </div>
-        <p class="card-explain">
-          Below the <strong>33rd</strong> percentile → Low · up to <strong>67th</strong> → Medium · up to <strong>90th</strong> → High · above → Very High.
-        </p>
+        <div class="assess-block">
+          <span class="assess-label">Imaging Malignancy Tendency</span>
+          <div class="risk-area">
+            <span class="risk-badge" id="mal-badge">—</span>
+            <p class="risk-pct" id="mal-index">Awaiting prediction</p>
+          </div>
+          <ul id="mal-drivers" class="mal-drivers"></ul>
+          <p class="card-explain" id="mal-disclaimer">Not a diagnosis, not validated against pathology — for reference only.</p>
+        </div>
       </div>
 
     </div>

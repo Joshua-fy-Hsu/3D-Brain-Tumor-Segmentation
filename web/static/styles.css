@@ -197,6 +197,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 18px; font-weight: 600; color: var(--text); padding-left: 16px;
 }
+.metric-value-col {
+  display: flex; flex-direction: column; align-items: flex-end; padding-left: 16px;
+}
+.metric-value-col .metric-value { padding-left: 0; }
+.metric-pct { font-size: 14px; font-weight: 600; color: var(--muted); margin-top: 3px; white-space: nowrap; }
 
 .flag {
   margin: 4px 0 0; padding: 8px 12px; border-radius: 6px;
@@ -214,6 +219,29 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   box-shadow: var(--shadow-sm);
 }
 .risk-pct { margin: 0; font-size: 12.5px; color: var(--muted); }
+
+/* Merged tumor-assessment card: stacked labelled blocks */
+.assess-block { display: flex; flex-direction: column; gap: 8px; }
+.assess-block + .assess-block {
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);
+}
+.assess-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--muted);
+}
+.assess-block .card-explain { margin-top: 2px; }
+
+/* Imaging malignancy-tendency drivers */
+.mal-drivers {
+  list-style: none; padding: 0; margin: 12px 0 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.mal-drivers li {
+  font-size: 12.5px; color: var(--text); padding-left: 16px; position: relative;
+}
+.mal-drivers li::before {
+  content: "•"; position: absolute; left: 2px; color: var(--muted-2);
+}
 
 /* ───── Anatomy ───── */
 .card-anatomy { margin-top: 16px; }
