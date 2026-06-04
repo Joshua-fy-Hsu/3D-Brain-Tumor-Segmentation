@@ -80,6 +80,7 @@ L = {
                      "administered as part of this analysis.",
         "vol_h": "QUANTITATIVE FINDINGS - TUMOR VOLUMES",
         "vol_intro": "Volume of affected tissue per BraTS region.",
+        "of_brain": "of brain", "of_wt": "of whole tumor",
         "vd": {"WT": "All abnormal tissue (NCR + ED + ET)",
                "TC": "Necrotic core + enhancing tissue",
                "ET": "Active, contrast-enhancing region"},
@@ -90,6 +91,11 @@ L = {
         "burden_intro": "Whole-tumor volume vs 1251 BraTS reference patients. "
                         "<33rd pct = Low, to 67th = Medium, to 90th = High, above = Very High.",
         "risk_level": "Risk level", "percentile": "Percentile", "pct_tail": "th percentile",
+        "mal_h": "IMAGING MALIGNANCY TENDENCY",
+        "mal_intro": "Descriptive indicator from predicted enhancement & necrosis "
+                     "fractions. NOT a tumour grade/stage and not validated against "
+                     "pathology - for reference only.",
+        "mal_index": "Imaging index",
         "conf_h": "SEGMENTATION CONFIDENCE",
         "conf_intro": "Mean predicted probability inside each region. Higher = more certain.",
         "unc_h": "PREDICTIVE UNCERTAINTY",
@@ -124,6 +130,7 @@ L = {
                      "（強化腫瘤、腫瘤核心、全腫瘤）之 3D 分割。本分析未額外施打顯影劑。",
         "vol_h": "量化結果 - 腫瘤體積",
         "vol_intro": "各 BraTS 區域受影響組織的體積。",
+        "of_brain": "占腦", "of_wt": "占全腫瘤",
         "vd": {"WT": "所有異常組織（NCR＋ED＋ET）",
                "TC": "壞死核心＋強化組織",
                "ET": "活躍、顯影劑強化的區域"},
@@ -133,6 +140,10 @@ L = {
         "burden_intro": "全腫瘤體積與 1251 名 BraTS 參考病患比較。低於第 33 百分位為低、"
                         "至第 67 為中、至第 90 為高、以上為極高。",
         "risk_level": "風險等級", "percentile": "百分位", "pct_tail": " 百分位",
+        "mal_h": "影像惡性度傾向",
+        "mal_intro": "由預測的強化腫瘤與壞死比例推導之描述性指標。並非腫瘤分級／分期，"
+                     "且未經病理驗證，僅供參考。",
+        "mal_index": "影像指數",
         "conf_h": "分割信心",
         "conf_intro": "各區域內的平均預測機率。數值越高，代表模型越有把握。",
         "unc_h": "預測不確定性",
@@ -387,10 +398,20 @@ def build_pdf(metrics: dict, summary_text: str, lang: str = "en",
 
     # ── Volumes ─────────────────────────────────────────────────────────
     vols = metrics.get("volumes_ml", {}) or {}
+    vpct = metrics.get("volume_pct", {}) or {}
     pdf.section(t["vol_h"], t["vol_intro"])
     for r in ("WT", "TC", "ET"):
         v = vols.get(r)
-        pdf.row3(rn[r], t["vd"][r], f"{_n(v, 1)} mL" if v is not None else t["na"])
+        desc = t["vd"][r]
+        entry = vpct.get(r) or {}
+        if entry.get("pct") is not None:
+            base = t["of_brain"] if entry.get("of") == "brain" else t["of_wt"]
+            dp = 2 if entry.get("of") == "brain" else 0
+            if lang == "zh":
+                desc = f"{desc}  ·  {base} {_n(entry['pct'], dp)}%"
+            else:
+                desc = f"{desc}  ·  {_n(entry['pct'], dp)}% {base}"
+        pdf.row3(rn[r], desc, f"{_n(v, 1)} mL" if v is not None else t["na"])
 
     # ── Localization ────────────────────────────────────────────────────
     anatomy = metrics.get("anatomy_top") or []
@@ -411,6 +432,27 @@ def build_pdf(metrics: dict, summary_text: str, lang: str = "en",
         pct = risk.get("percentile")
         pdf.row3(t["percentile"], "",
                  f"{pct}{t['pct_tail']}" if pct is not None else t["na"])
+
+    # ── Imaging malignancy tendency (descriptive, non-diagnostic) ───────
+    mal = metrics.get("malignancy") or {}
+    if mal and mal.get("category") not in (None, "unknown"):
+        pdf.section(t["mal_h"], t["mal_intro"])
+        label = mal.get("label_zh") if lang == "zh" else mal.get("label")
+        idx = mal.get("index")
+        pdf.row3(label or "", t["mal_index"],
+                 _n(idx, 2) if idx is not None else t["na"])
+        drivers = (mal.get("drivers_zh") if lang == "zh" else mal.get("drivers")) or []
+        for d in drivers:
+            pdf.f(8.5)
+            pdf.set_text_color(*MUTE)
+            pdf.multi_cell(pdf.epw, 4.5, _c("- " + d))
+        disc = mal.get("disclaimer_zh") if lang == "zh" else mal.get("disclaimer")
+        if disc:
+            pdf.ln(0.5)
+            pdf.f(8.5)
+            pdf.set_text_color(*MUTE)
+            pdf.multi_cell(pdf.epw, 4.5, _c(disc))
+        pdf.set_text_color(*INK)
 
     # ── Confidence ──────────────────────────────────────────────────────
     conf = metrics.get("confidence", {}) or {}

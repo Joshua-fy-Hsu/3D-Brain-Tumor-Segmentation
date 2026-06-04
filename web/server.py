@@ -33,6 +33,7 @@ if SRC not in sys.path:
 from web import anatomy as A
 from web import energy as EN
 from web import inference as I
+from web import malignancy as MAL
 from web import metrics_case as MC
 from web import preprocess as P
 from web import report_pdf as RPDF
@@ -212,10 +213,14 @@ async def predict(
         canonical_modality_paths[m] = dst
 
     volumes = MC.region_volumes_ml(res.labels, case.voxel_volume_ml)
+    # Brain volume from the foreground channel (index 4 of the 5-ch input).
+    brain_ml = float((case.x[0, 4] > 0).sum().item()) * case.voxel_volume_ml
+    volume_pct = MC.region_volume_pct(volumes, brain_ml)
     confidence = MC.region_confidence(res.probs_4ch, res.labels)
     anatomy_top = A.overlap_top_k(res.labels, _atlas, k=5) if _atlas else []
     risk = RK.classify(volumes, _population) if _population else {}
-    summary_text = SUM.build(volumes, anatomy_top, confidence, risk)
+    malignancy = MAL.assess(res.labels, case.voxel_volume_ml)
+    summary_text = SUM.build(volumes, anatomy_top, confidence, risk, malignancy)
 
     metrics = {
         "session_id": sid,
@@ -225,8 +230,11 @@ async def predict(
         "spatial_shape": list(case.spatial_shape),
         "voxel_volume_ml": case.voxel_volume_ml,
         "volumes_ml": {k: round(float(v), 3) for k, v in volumes.items()},
+        "volume_pct": volume_pct,
+        "brain_volume_ml": round(brain_ml, 1),
         "confidence": confidence,
         "risk": risk,
+        "malignancy": malignancy,
         "anatomy_top": anatomy_top,
         "summary": summary_text,
         "energy": energy,
