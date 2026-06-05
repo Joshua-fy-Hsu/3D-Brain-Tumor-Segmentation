@@ -1,18 +1,26 @@
 # AURA — 3D Brain Tumor Segmentation (BraTS 2021)
 
 **National Taipei University, Department of Electrical Engineering**
+System Engineering and Innovation Lab · Advisor: Dr. Basanta
 
 Joshua Hsu (許豐有) · Jason Wu (吳東霖)
 
-A 3D deep-learning pipeline for multi-class brain-tumor segmentation on
-multi-modal MRI — with built-in uncertainty estimation, a rigorous evaluation
-suite (Dice / HD95 / NSD + calibration + risk–coverage + paired statistics),
-and an interactive web workstation for clinical-style inspection.
+> **AURA** — *Attention · U-Net · Residual · All-modality*
 
-The headline model, **AURA**, reaches **0.839 mean Dice** (ET / TC / WT) on the
-held-out BraTS-2021 validation split (251 cases) — the best of the three models
-here, with the strongest **tumor-core** score, **~5× faster** inference and
-**lower peak memory** than the all-components "Complex" model.
+AURA is an **originally designed, complete end-to-end medical-AI system — not just
+a model**. Every stage, from raw multi-modal MRI to a deployed browser workstation,
+is built, trained, and evaluated as one pipeline: a 3D CNN+transformer segmentation
+network, a rigorous evaluation suite (accuracy + calibration + uncertainty), and an
+interactive web tool that turns a scan into a clinical-ready report.
+
+<p align="center">
+  <img src="docs/figures/web2.png" width="100%" alt="AURA web workstation: clinical summary, tumor volumes, model confidence, and anatomical location for one case"/>
+</p>
+
+The headline model reaches **0.839 mean Dice** (ET / TC / WT) on the held-out
+BraTS-2021 validation split (251 cases), with the strongest **tumor-core** score and
+best calibration/uncertainty of the three models studied — all in **45 M parameters
+and ~0.24 s per scan** on a single consumer GPU.
 
 > Academic capstone project. Trained and evaluated on the public
 > [BraTS 2021](http://braintumorsegmentation.org/) dataset.
@@ -27,89 +35,160 @@ here, with the strongest **tumor-core** score, **~5× faster** inference and
 
 ## Contents
 
-- [Highlights](#highlights)
+- [Why it matters](#why-it-matters)
+- [How the system works](#how-the-system-works)
+  - [1. The clinical target](#1-the-clinical-target)
+  - [2. Input & preprocessing](#2-input--preprocessing)
+  - [3. The AURA model](#3-the-aura-model)
+  - [4. Training](#4-training)
+  - [5. Evaluation — beyond Dice](#5-evaluation--beyond-dice)
+  - [6. Deployment — the web workstation](#6-deployment--the-web-workstation)
 - [Results](#results)
-- [The three models](#the-three-models)
 - [Quickstart](#quickstart)
 - [Repository layout](#repository-layout)
-- [Installation](#installation)
-- [Pretrained weights](#pretrained-weights)
-- [Data & preprocessing](#data--preprocessing)
-- [Training](#training) · [Evaluation](#evaluation) · [Web workstation](#web-workstation)
+- [Installation · weights · data](#installation--weights--data)
+- [Running it yourself](#running-it-yourself)
 - [License & acknowledgements](#license--acknowledgements)
 
 ---
 
-## Highlights
+## Why it matters
 
-- **Three comparable models, one pipeline** — a CNN baseline, an
-  all-components "Complex" model, and the clean-slate **AURA** model, all
-  trained and evaluated through the same variant-aware harness for a fair,
-  apples-to-apples comparison.
-- **Uncertainty-aware** — MC-Dropout / test-time-augmentation predictive
-  variance, with calibration (brain- and tumor-restricted ECE/ACE) and
-  risk–coverage / AURC diagnostics, not just Dice.
-- **Honest evaluation** — per-case metrics, sliding-window inference, ET
-  post-processing, V_min sweeps, and paired Wilcoxon + bootstrap 95% CIs for
-  model comparison.
-- **Deployable** — an interactive FastAPI + [Niivue](https://niivue.github.io)
-  workstation runs the deployed AURA model end-to-end and exports a PDF report,
-  including per-inference GPU energy / CO₂ estimates.
+Manual MRI tumor segmentation can take a radiologist **up to four hours per case**,
+offers no instant 3D view or volume metrics, and cannot keep pace with rising case
+numbers. Brain tumors are among the most lethal cancers in Taiwan — diagnoses keep
+climbing (~750/year, ×3.2 over 40 years) while five-year survival sits near 30%.
+Fast, trustworthy, automated segmentation is the clearest lever on outcomes, and a
+tool is only useful in the clinic if it also says **how sure it is**. AURA is built
+end-to-end around both goals.
+
+---
+
+## How the system works
+
+### 1. The clinical target
+
+A brain tumor is segmented into three nested regions, each driving a different
+treatment decision. The model predicts 4 voxel classes
+{background, NCR, ED, ET} and is scored over the nested regions **ET ⊂ TC ⊂ WT**.
+
+<p align="center">
+  <img src="docs/figures/clinical_regions.png" width="85%" alt="The three nested tumor regions and their clinical role"/>
+</p>
+
+- **ET** (enhancing tumor) — active tumor.
+- **TC** (tumor core, NCR + ET) — the solid mass that surgery resects.
+- **WT** (whole tumor, + edema) — the field that radiotherapy targets.
+
+### 2. Input & preprocessing
+
+No single MRI sequence shows the whole tumor — T1CE highlights enhancing tumor,
+FLAIR highlights edema, T1/T2 give anatomy. The system fuses all four into a
+**5-channel** input (T1 · T1CE · T2 · FLAIR + a binary foreground mask),
+z-scores each modality over brain voxels, and trains on **128³ patches** —
+50% tumor-centered, 50% random — to fight a severe ~99:1 background-to-tumor
+imbalance. Tumors span a 129× volume range and sit anywhere in the brain, so
+there is no positional shortcut: training is patch-based and inference is
+sliding-window.
+
+### 3. The AURA model
+
+A **CNN + transformer hybrid**: a residual-CNN encoder captures local texture, a
+transformer at the **8³ bottleneck only** captures global 3D context (efficient and
+fp16-stable), and a CNN decoder with 3-level deep supervision reconstructs the
+segmentation. A 4-class softmax head avoids the region-overlap ambiguity of
+sigmoid outputs, and decoder dropout doubles as an uncertainty source at inference.
+
+<p align="center">
+  <img src="docs/figures/AURA%20Architecture.jpg" width="92%" alt="AURA architecture: residual-CNN encoder, transformer bottleneck, CNN decoder with deep supervision"/>
+</p>
+
+### 4. Training
+
+Optimization is tuned for stability on imbalanced 3D segmentation: a **region-wise
+Dice + Focal loss** over ET/TC/WT (Focal concentrates on hard, misclassified
+voxels), deep supervision (full + ½ + ¼ resolution), Adam at lr 1e-4, effective
+batch 32 (batch 2 × accum 16), mixed precision, EMA weights (decay 0.999), and
+gradient clipping. Recipes are declared per-variant in
+[`train_variant.py`](src/training/train_variant.py) so every model trains through
+the same harness.
+
+### 5. Evaluation — beyond Dice
+
+AURA is judged on three axes, not just overlap:
+
+| Axis | Metric | What it answers |
+|---|---|---|
+| **Segmentation** | Dice, HD95, NSD | How well does the prediction match the expert? |
+| **Calibration** | ECE / ACE | Does its confidence match its accuracy on tumor voxels? |
+| **Uncertainty** | AURC, risk–coverage | Does it know *when it is wrong*? |
+
+Inference runs sliding-window with Gaussian importance weighting, plus 8-way
+flip TTA and MC-Dropout for predictive uncertainty, and an ET post-processing
+pass. Model-vs-model claims use **paired Wilcoxon tests + bootstrap 95% CIs** over
+per-case metrics. A qualitative case below shows the prediction matching the
+expert while the uncertainty map lights up exactly along the error-prone region
+boundaries:
+
+<p align="center">
+  <img src="docs/figures/conclusion_hero.png" width="100%" alt="Representative case: T1CE input, ground truth, AURA prediction, and uncertainty map"/>
+</p>
+
+That uncertainty is **actionable**: ranking cases by confidence and deferring the
+least-confident 20% raises mean Dice from 0.830 to 0.849 — selective prediction
+that a clinician can use to triage which scans need a second look.
+
+<p align="center">
+  <img src="docs/figures/trustworthiness.png" width="92%" alt="Uncertainty map and selective-prediction Dice gain"/>
+</p>
+
+### 6. Deployment — the web workstation
+
+The system ends in a tool, not a checkpoint. An interactive FastAPI +
+[Niivue](https://niivue.github.io) workstation lets you upload a case, run the
+deployed AURA model, explore the segmentation in 3D and on axial/coronal/sagittal
+slices, read per-region volumes and confidence, and download a single PDF report —
+including a per-inference GPU energy / CO₂ / cost estimate.
+
+<p align="center">
+  <img src="docs/figures/web%201.png" width="100%" alt="AURA web workstation: 3D volume rendering and tri-planar slice viewer"/>
+</p>
+
+**▶︎ Demo video** — upload → segment → 3D inspection → report, end to end:
+
+https://github.com/user-attachments/assets/4c54dfef-1c2f-4ca6-84ed-8374faf5017f
+
+It runs the **same** inference path as the offline evaluator (sliding-window →
+softmax → ET post-process; no TTA/MC-Dropout, for latency), so what you see in the
+browser matches the committed `baseline_post` metrics. A Traditional-Chinese
+localization shares the same backend in [`web/web_zh/`](web/web_zh/).
 
 ---
 
 ## Results
 
 BraTS-2021 validation split (251 cases), test-time augmentation + ET
-post-processing (the `tta_post` mode). Dice is per region — **ET** (enhancing
-tumor), **TC** (tumor core), **WT** (whole tumor). Best per column in **bold**.
+post-processing (the `tta_post` mode). Dice is per region — **ET** / **TC** / **WT**.
+Best per column in **bold**.
 
-| Model | Dice ET | Dice TC | Dice WT | **Mean Dice** | HD95 ↓ | NSD ↑ |
-|---|---|---|---|---|---|---|
-| **baseline** (`base_cnn`) | 0.765 | 0.788 | 0.923 | 0.825 | 6.75 | 0.787 |
-| **Complex** (`full`)      | **0.789** | 0.781 | **0.929** | 0.833 | **5.95** | **0.803** |
-| **AURA** (`hybrid`)       | 0.786 | **0.804** | 0.928 | **0.839** | 5.96 | 0.801 |
+| Model | Mean Dice | Dice ET | Dice TC | Dice WT | HD95 ↓ | ECE ↓ | AURC ↓ |
+|---|---|---|---|---|---|---|---|
+| **baseline** (`base_cnn`) | 0.825 | 0.765 | 0.788 | 0.923 | 6.75 | 0.106 | 0.179 |
+| **Complex** (`full`)      | 0.833 | **0.789** | 0.781 | **0.929** | **5.95** | 0.110 | 0.191 |
+| **AURA** (`hybrid`)       | **0.839** | 0.785 | **0.804** | 0.928 | 5.96 | **0.100** | **0.175** |
 
-**Efficiency** (single 128³ patch, RTX 4060 Laptop, fp16/bf16):
+**Efficiency** (single 128³ patch, consumer laptop GPU):
+**45 M params · 612 GFLOPs · 1.9 GB peak · ~0.24 s/scan · 4.1 cases/s.**
 
-| Model | Params | GFLOPs | Peak mem | Latency |
-|---|---|---|---|---|
-| baseline | 22.9 M | 436 | 2096 MB | 165 ms |
-| Complex  | 37.1 M | 586 | 2448 MB | 1179 ms |
-| AURA     | 45.1 M | 613 | **1929 MB** | **232 ms** |
-
-**Takeaways**
-
-- **AURA** has the best mean Dice and the best **tumor-core** score (the
-  hardest, most clinically relevant region), runs ~5× faster than Complex, and
-  uses the least peak memory — so it is the model deployed in the web app.
-- **Complex** turns on *every* component of the ablation backbone (cross-modal
-  attention, frequency branch, spectral-Swin stage, predictive-variance head,
-  boundary head, multi-scale fusion). It edges ahead on ET / WT / HD95 but, for
-  all that machinery, does **not** beat the simpler AURA on the overall metric —
-  a useful negative result on stacking complexity.
-- **baseline** is a standard 3D Residual U-Net, the comparison anchor.
+**Less is more.** The three models share one residual-U-Net core. *Complex* stacks
+**eight** added components (cross-modal attention, frequency branch, spectral-Swin,
+uncertainty/boundary heads, multi-scale fusion); *AURA* adds just **one**
+transformer bottleneck. AURA still wins on **mean Dice**, on the clinically
+critical **tumor core** (+0.023 over Complex), and on **calibration + uncertainty** —
+a clean negative result on stacking complexity, and the reason AURA is the model
+deployed in the web app.
 
 > Numbers are reproducible from the committed CSVs under [`results/`](results/).
-
----
-
-## The three models
-
-| Registry key | Name | Architecture |
-|---|---|---|
-| `base_cnn` | baseline | 3D Residual U-Net — 4 encoder stages (32→64→128→256, ×16 bottleneck), Instance Norm + LeakyReLU, deep supervision. No attention. |
-| `full` | Complex | `TransResUNet3D` with **all** components on: modality stems + cross-modal attention + frequency branch + spectral-Swin transformer stage + predictive-variance (uncertainty) head + boundary head + deeper Swin / extra encoder depth + multi-scale fusion head. |
-| `hybrid` | AURA | Clean-slate, standalone: residual CNN encoder → transformer at the 8³ bottleneck → CNN decoder, 4-class softmax head, 3-level deep supervision, MC-Dropout uncertainty. |
-
-Input is **5-channel** (T1, T1CE, T2, FLAIR + a binary foreground mask) at a
-128³ patch size; output is 4 classes {background, NCR, ED, ET}, scored over the
-nested BraTS regions ET ⊂ TC ⊂ WT.
-
-The names are a presentation layer only — the registry keys
-(`base_cnn` / `full` / `hybrid`) are the load-bearing identifiers used for
-checkpoints (`logs/run_<key>_*`) and results (`results/<key>/`). The single
-source of truth is [`src/model/registry.py`](src/model/registry.py).
 
 ---
 
@@ -120,8 +199,8 @@ git clone <this-repo> && cd Brain_Tumor_Segmentation
 pip install torch --index-url https://download.pytorch.org/whl/cu121
 pip install -r src/requirements.txt
 
-# Grab the AURA weights from the GitHub Releases page (see "Pretrained weights")
-# into logs/run_hybrid_<id>/best_model.pth, then launch the web workstation:
+# Grab the AURA weights from the GitHub Releases page (see below) into
+# logs/run_hybrid_<id>/best_model.pth, then launch the web workstation:
 python scripts/prepare_webapp_assets.py
 python -m uvicorn web.server:app --port 8000      # open http://localhost:8000
 ```
@@ -138,48 +217,39 @@ src/
     model.py                 # ResUnet3D            (baseline)
     trans_resunet.py         # TransResUNet3D       (Complex)
     hybrid.py                # HybridUNet3D         (AURA)
-    model_transformer.py     # windowed-attention blocks reused by Complex
     blocks/                  # per-component building blocks
-  training/
-    train_variant.py         # variant-aware trainer (recipes in TRAINING_PRESETS)
-    losses.py                # region-wise Dice+Focal, uncertainty/boundary losses
-  evaluation/
-    evaluate_variant.py      # variant-aware evaluator
-    _core.py                 # shared inference / calibration / summary core
-    metrics.py stats.py calibration.py uncertainty*.py postprocess.py ...
-  preprocessing/
-    optimizing.py            # raw .nii.gz -> normalized .npy cache
-    dataset.py gpu_augment.py
-scripts/                     # helper scripts (see scripts/README.md)
+  training/   train_variant.py · losses.py        # variant-aware trainer + losses
+  evaluation/ evaluate_variant.py · _core.py · metrics.py · stats.py · ...
+  preprocessing/ optimizing.py · dataset.py · gpu_augment.py
+scripts/                     # tmux-wrapped pipelines (see scripts/README.md)
 web/                         # FastAPI + Niivue workstation (pinned to AURA)
 results/                     # committed validation metrics (CSV) + plots
+docs/                        # report, slides, poster, figures
 ```
+
+The three model names are a presentation layer; the registry keys
+(`base_cnn` / `full` / `hybrid`) are the load-bearing identifiers for checkpoints
+(`logs/run_<key>_*`) and results (`results/<key>/`). The single source of truth is
+[`src/model/registry.py`](src/model/registry.py).
 
 ---
 
-## Installation
+## Installation · weights · data
+
+**Install.** PyTorch first from the CUDA-matched index, then the rest. Python 3.10+
+and an NVIDIA GPU are recommended for training. `monai` is a hard dependency of
+evaluation; `torchio` (robustness) and `fastapi`/`uvicorn` (web app) are optional.
 
 ```bash
-# 1. Install PyTorch from the CUDA-matched index first, e.g. CUDA 12.1:
 pip install torch --index-url https://download.pytorch.org/whl/cu121
-
-# 2. Install the rest:
 pip install -r src/requirements.txt
 ```
 
-Python 3.10+ and an NVIDIA GPU are recommended for training (Ampere+ for the
-bf16 path used by the Complex model). `monai` is a hard dependency of the
-evaluation pipeline; `torchio` (robustness perturbations) and the
-`fastapi`/`uvicorn` stack (web app) are optional.
-
----
-
-## Pretrained weights
-
-Model checkpoints are too large for the git repo, so they are published on the
+**Pretrained weights.** Checkpoints are too large for git and live on the
 [**Releases**](https://github.com/Joshua-fy-Hsu/3D-Brain-Tumor-Segmentation/releases)
-page (`v1.0`). Download the asset for the model you want, rename it to
-`best_model.pth`, and place it under a matching run directory:
+page (`v1.0`). Download an asset, rename to `best_model.pth`, place under a matching
+run dir; the evaluator and web app auto-discover the newest checkpoint that matches
+the requested variant (or pass `--checkpoint`).
 
 | Release asset | Place as |
 |---|---|
@@ -187,103 +257,43 @@ page (`v1.0`). Download the asset for the model you want, rename it to
 | `full_best_model.pth`     | `logs/run_full_<id>/best_model.pth`     (Complex) |
 | `base_cnn_best_model.pth` | `logs/run_base_cnn_<id>/best_model.pth` (baseline) |
 
-The evaluator and web app auto-discover the newest checkpoint whose weights
-match the requested variant; pass `--checkpoint <path>` to override. The
-validation metrics behind the results tables are committed under
-[`results/`](results/) (CSV summaries + plots), and per-model training curves
-under `logs/*/training_log.csv`.
-
----
-
-## Data & preprocessing
-
-This project uses **BraTS 2021** (4 modalities per case: T1, T1CE, T2, FLAIR,
-plus expert segmentation). Download it from the
-[official challenge page](http://braintumorsegmentation.org/) — it is **not**
-included in this repository and has its own data-use terms.
-
-Point the pipeline at your data and run preprocessing:
+**Data.** This project uses **BraTS 2021** (T1, T1CE, T2, FLAIR + expert
+segmentation), available from the
+[official challenge page](http://braintumorsegmentation.org/) under its own terms —
+it is **not** included here. Point the pipeline at your copy and preprocess:
 
 ```bash
-export BRATS_DATA_PATH=/path/to/BraTS2021_Optimized   # or set in config.py
+export BRATS_DATA_PATH=/path/to/BraTS2021_Optimized   # or set in src/configs/config.py
 python src/preprocessing/optimizing.py
 ```
 
-Preprocessing produces, per case, a 5-channel `image.npy` (T1, T1CE, T2,
-FLAIR, foreground mask; pre-normalized, foreground-masked), a `mask.npy`
-(labels {0 background, 1 NCR, 2 ED, 3 ET}; raw BraTS label 4 is remapped to 3),
-and tumor coordinates for tumor-centered patch sampling. The first 1,000 cases
-are used for training, the remainder for validation.
-
 ---
 
-## Training
-
-Recipes live in the per-variant presets in
-[`src/training/train_variant.py`](src/training/train_variant.py); the commands
-just select a variant.
+## Running it yourself
 
 ```bash
-python src/training/train_variant.py --variant base_cnn
-python src/training/train_variant.py --variant full   --epochs 300 --warmup 10
+# Train (recipes live in per-variant presets; the command just selects a variant)
 python src/training/train_variant.py --variant hybrid --epochs 300
-```
 
-Checkpoints are written to `logs/run_<variant>_*/` (`best_model.pth`, plus
-`snapshot_top*.pth` for the snapshot-ensemble variants). See
-[`scripts/README.md`](scripts/README.md) for the full command reference.
-
----
-
-## Evaluation
-
-```bash
-# single best checkpoint
-python src/evaluation/evaluate_variant.py --variant base_cnn --vmin-sweep
-
-# snapshot ensemble + 32-view extended TTA (full / hybrid)
+# Evaluate — single checkpoint, or snapshot-ensemble + extended TTA
+python src/evaluation/evaluate_variant.py --variant hybrid --vmin-sweep
 python src/evaluation/evaluate_variant.py --variant hybrid \
     --ensemble-ckpts "logs/run_hybrid_*/snapshot_top*.pth" \
     --tta-extended --vmin-sweep --overlap 0.625 --run-name eval_ensemble
-```
 
-Results land in `results/<variant>/eval_*/`: `per_case_metrics.csv`,
-`summary.csv` (Dice / HD95 / NSD / calibration / AURC per inference mode), plus
-plots and uncertainty diagnostics. Compare two runs with a paired Wilcoxon test
-+ bootstrap 95% CIs:
-
-```bash
+# Compare two runs — paired Wilcoxon + bootstrap 95% CIs
 python -m evaluation.stats compare \
     results/base_cnn/eval_X/per_case_metrics.csv \
     results/hybrid/eval_Y/per_case_metrics.csv \
     --mode tta_post --label-a baseline --label-b AURA
-```
 
----
-
-## Web workstation
-
-An interactive FastAPI + [Niivue](https://niivue.github.io) viewer pinned to
-the AURA model: upload a case, run inference, inspect the segmentation and a
-per-region confidence / uncertainty overlay, and download a PDF report. It also
-tracks per-inference GPU energy / CO₂ estimates.
-
-```bash
-python scripts/prepare_webapp_assets.py        # one-time: build population stats
+# Web workstation
+python scripts/prepare_webapp_assets.py
 python -m uvicorn web.server:app --host 0.0.0.0 --port 8000
 ```
 
-It loads the newest `logs/run_*/best_model.pth` that matches the `hybrid`
-architecture and runs the same inference path as
-`evaluate_variant.py --variant hybrid` (no TTA / MC-Dropout, for latency). See
+See [`scripts/README.md`](scripts/README.md) for the full command reference and
 [`web/README.md`](web/README.md) for the API.
-
-A Traditional-Chinese localization of the workstation lives in
-[`web/web_zh/`](web/web_zh/) (reuses the same `web/` backend):
-
-```bash
-python -m uvicorn web.web_zh.server:app --host 0.0.0.0 --port 8001
-```
 
 ---
 
@@ -292,7 +302,9 @@ python -m uvicorn web.web_zh.server:app --host 0.0.0.0 --port 8001
 Code is released under the [MIT License](LICENSE).
 
 - Data: [BraTS 2021](http://braintumorsegmentation.org/) (RSNA-ASNR-MICCAI) —
-  subject to the dataset's own license; not redistributed here. Pretrained
-  weights derived from it remain subject to the dataset's terms.
+  subject to the dataset's own license; not redistributed here. Pretrained weights
+  derived from it remain subject to the dataset's terms.
 - Built with [PyTorch](https://pytorch.org), [MONAI](https://monai.io), and
   [Niivue](https://niivue.github.io).
+</content>
+</invoke>
