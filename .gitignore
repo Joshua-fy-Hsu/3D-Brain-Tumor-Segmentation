@@ -33,8 +33,15 @@ web/command.txt
 
 # --- docs:只公開 4 份 PROJECT PDF；其餘 (競賽/會議/figures+demo影片) 本地私有 ---
 docs/competition/
-docs/figures/
 docs/meetings/
+# figures 預設私有，只放行 README 用到的圖（大檔 mp4 等仍排除）
+docs/figures/*
+!docs/figures/web2.png
+!docs/figures/clinical_regions.png
+!docs/figures/AURA Architecture.jpg
+!docs/figures/conclusion_hero.png
+!docs/figures/trustworthiness.png
+!docs/figures/web 1.png
 
 # --- 編輯器與環境設定 ---
 .vscode/
