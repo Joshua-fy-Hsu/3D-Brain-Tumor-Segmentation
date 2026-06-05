@@ -59,6 +59,10 @@ Brain tumors are among the most lethal cancers in Taiwan — diagnoses keep clim
 fast tumor delineation is the clearest lever on outcomes, but today it doesn't
 scale.
 
+<p align="center">
+  <img src="docs/figures/taiwan_epidemiology.png" width="92%" alt="Taiwan brain-tumor diagnoses rising ~3.2× over 40 years; five-year survival near 30%"/>
+</p>
+
 **The problem**
 
 - **Manual segmentation is slow** — outlining a tumor on MRI takes a radiologist
