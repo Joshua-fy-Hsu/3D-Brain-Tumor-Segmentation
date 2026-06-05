@@ -37,6 +37,7 @@ docs/meetings/
 # figures 預設私有，只放行 README 用到的圖（大檔 mp4 等仍排除）
 docs/figures/*
 !docs/figures/web2.png
+!docs/figures/pipeline_overview.png
 !docs/figures/taiwan_epidemiology.png
 !docs/figures/clinical_regions.png
 !docs/figures/AURA Architecture.jpg

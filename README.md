@@ -92,6 +92,13 @@ deployed workstation.
 
 ## How the system works
 
+Every stage below is built, trained, and evaluated as one pipeline — from raw MRI
+to the deployed workstation.
+
+<p align="center">
+  <img src="docs/figures/pipeline_overview.png" width="100%" alt="System pipeline: Raw MRI → Preprocess → AURA model → Training → Evaluation → Web App"/>
+</p>
+
 ### 1. The clinical target
 
 A brain tumor is segmented into three nested regions, each driving a different
