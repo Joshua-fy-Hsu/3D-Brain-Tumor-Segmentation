@@ -35,7 +35,7 @@ and ~0.24 s per scan** on a single consumer GPU.
 
 ## Contents
 
-- [Why it matters](#why-it-matters)
+- [The problem & our solution](#the-problem--our-solution)
 - [How the system works](#how-the-system-works)
   - [1. The clinical target](#1-the-clinical-target)
   - [2. Input & preprocessing](#2-input--preprocessing)
@@ -52,15 +52,37 @@ and ~0.24 s per scan** on a single consumer GPU.
 
 ---
 
-## Why it matters
+## The problem & our solution
 
-Manual MRI tumor segmentation can take a radiologist **up to four hours per case**,
-offers no instant 3D view or volume metrics, and cannot keep pace with rising case
-numbers. Brain tumors are among the most lethal cancers in Taiwan — diagnoses keep
-climbing (~750/year, ×3.2 over 40 years) while five-year survival sits near 30%.
-Fast, trustworthy, automated segmentation is the clearest lever on outcomes, and a
-tool is only useful in the clinic if it also says **how sure it is**. AURA is built
-end-to-end around both goals.
+Brain tumors are among the most lethal cancers in Taiwan — diagnoses keep climbing
+(~750/year, ×3.2 over 40 years) while five-year survival sits near 30%. Accurate,
+fast tumor delineation is the clearest lever on outcomes, but today it doesn't
+scale.
+
+**The problem**
+
+- **Manual segmentation is slow** — outlining a tumor on MRI takes a radiologist
+  *up to four hours per case*.
+- **No instant 3D picture** — clinicians lack quick volumetric views and per-region
+  volume metrics to plan surgery vs radiotherapy.
+- **Demand outpaces specialists** — rising case numbers leave too few experts to
+  read every scan in time.
+- **Black-box AI isn't clinic-ready** — a prediction is only usable if the tool can
+  also say *how sure it is* and flag the cases it is likely to get wrong.
+
+**Our solution — AURA, an end-to-end system**
+
+AURA addresses all four as **one pipeline**, not a standalone model:
+
+| The problem | How AURA solves it |
+|---|---|
+| Hours of manual tracing | A 3D CNN+transformer model segments all three tumor regions in **~0.24 s/scan** |
+| No 3D view or volumes | A browser **workstation** renders the case in 3D + tri-planar slices with instant per-region volumes |
+| Too few specialists | A deployable, single-GPU tool (45 M params, 1.9 GB) that any clinic can run to **triage and assist** |
+| Trust / black box | Built-in **uncertainty + calibration**, so the tool flags low-confidence cases for a second look |
+
+The rest of this README walks the pipeline stage by stage — from raw MRI to the
+deployed workstation.
 
 ---
 
