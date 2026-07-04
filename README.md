@@ -3,7 +3,7 @@
 **National Taipei University, Department of Electrical Engineering**
 System Engineering and Innovation Lab · Advisor: Dr. Basanta
 
-Joshua Hsu (許豐有) · Jason Wu (吳東霖)
+Joshua Hsu (許豐有)
 
 > **AURA** — *Attention · U-Net · Residual · All-modality*
 
